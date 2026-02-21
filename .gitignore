@@ -4,3 +4,4 @@ dist/
 .memex/sessions/
 *.log
 .DS_Store
+.memex/
