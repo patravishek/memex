@@ -80,7 +80,20 @@ async function wrapWithScript(
 
     // macOS `script` syntax: script [-q] [-F pipe] [file [command [args]]]
     // -q = quiet (no typescript start/stop messages)
-    const scriptArgs = ["-q", rawLogPath, resolvedCommand, ...args];
+    //
+    // Problem: `script` spawns commands through the user's shell which
+    // re-sources ~/.zshrc, re-introducing API keys even after we strip them
+    // from the env. Fix: prepend `env -u KEY ...` so keys are explicitly
+    // unset at exec time, AFTER any shell profile sourcing.
+    const envUnsetArgs = MEMEX_ONLY_KEYS.flatMap((k) => ["-u", k]);
+    const scriptArgs = [
+      "-q",
+      rawLogPath,
+      "env",
+      ...envUnsetArgs,
+      resolvedCommand,
+      ...args,
+    ];
 
     const proc = child_process.spawn("script", scriptArgs, {
       stdio: "inherit",
@@ -181,19 +194,21 @@ async function wrapWithSpawn(
  * wrapped agent. This prevents conflicts like Claude CLI warning about
  * ANTHROPIC_API_KEY clashing with a claude.ai login session.
  */
-function sanitizeEnv(env: NodeJS.ProcessEnv): Record<string, string> {
-  const MEMEX_ONLY_KEYS = [
-    "ANTHROPIC_API_KEY",
-    "OPENAI_API_KEY",
-    "LITELLM_API_KEY",
-    "LITELLM_BASE_URL",
-    "LITELLM_MODEL",
-    "LITELLM_TEAM_ID",
-    "ANTHROPIC_MODEL",
-    "OPENAI_MODEL",
-    "AI_PROVIDER",
-  ];
+// Keys Memex uses internally that must never leak into the wrapped agent.
+// Used both to strip the env and to build `env -u` unset args for `script`.
+const MEMEX_ONLY_KEYS = [
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "LITELLM_API_KEY",
+  "LITELLM_BASE_URL",
+  "LITELLM_MODEL",
+  "LITELLM_TEAM_ID",
+  "ANTHROPIC_MODEL",
+  "OPENAI_MODEL",
+  "AI_PROVIDER",
+];
 
+function sanitizeEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   return Object.fromEntries(
     Object.entries(env)
       .filter(([key]) => !MEMEX_ONLY_KEYS.includes(key))

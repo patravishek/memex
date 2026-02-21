@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "memex": {
+      "command": "memex",
+      "args": [
+        "serve",
+        "--project",
+        "/Users/avishekpatra/Projects/memex"
+      ],
+      "env": {}
+    }
+  }
+}
