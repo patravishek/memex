@@ -308,10 +308,12 @@ program
     if (options.global) {
       filePath = writeGlobalMcpJson(projectPath);
       console.log(chalk.green(`\n  Global MCP config written → ${filePath}`));
-      console.log(chalk.dim("  Claude will use Memex tools in every session.\n"));
+      console.log(chalk.dim("  Project path is resolved dynamically at runtime."));
+      console.log(chalk.dim("  Claude will use Memex tools for whichever project is open.\n"));
     } else {
       filePath = writeMcpJson(projectPath, projectPath);
       console.log(chalk.green(`\n  MCP config written → ${filePath}`));
+      console.log(chalk.dim(`  Project: ${projectPath}`));
       console.log(chalk.dim("  Commit this file to share Memex with your team.\n"));
     }
 

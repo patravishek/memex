@@ -14,13 +14,22 @@ export interface McpServerEntry {
 
 /**
  * Build the MCP server entry for Memex.
- * Uses the globally installed `memex` binary with the project path baked in,
- * so Claude Code always reads from the correct project's DB regardless of cwd.
+ *
+ * Project-scoped (default): bakes in the project path so the server always
+ * reads from the correct DB regardless of where Claude is launched from.
+ *
+ * Global (dynamic=true): omits --project so `memex serve` defaults to
+ * process.cwd() at runtime. Claude Code launches MCP servers from the
+ * project's working directory, so the correct DB is resolved automatically
+ * no matter which project is open — no stale path problem.
  */
-export function buildMemexEntry(projectPath: string): McpServerEntry {
+export function buildMemexEntry(
+  projectPath: string,
+  dynamic = false
+): McpServerEntry {
   return {
     command: "memex",
-    args: ["serve", "--project", projectPath],
+    args: dynamic ? ["serve"] : ["serve", "--project", projectPath],
     env: {},
   };
 }
@@ -32,7 +41,8 @@ export function buildMemexEntry(projectPath: string): McpServerEntry {
  */
 export function writeMcpJson(
   dir: string,
-  projectPath: string
+  projectPath: string,
+  dynamic = false
 ): string {
   const filePath = path.join(dir, ".mcp.json");
 
@@ -46,7 +56,7 @@ export function writeMcpJson(
     }
   }
 
-  existing.mcpServers["memex"] = buildMemexEntry(projectPath);
+  existing.mcpServers["memex"] = buildMemexEntry(projectPath, dynamic);
   fs.writeFileSync(filePath, JSON.stringify(existing, null, 2) + "\n", "utf-8");
   return filePath;
 }
@@ -82,8 +92,13 @@ export function globalMcpConfigPath(): string {
   return path.join(os.homedir(), ".claude", "mcp.json");
 }
 
+/**
+ * Write the global MCP config (~/.claude/mcp.json) without a hardcoded
+ * project path. `memex serve` will resolve the project from cwd at runtime,
+ * so the correct memory DB is used regardless of which project is open.
+ */
 export function writeGlobalMcpJson(projectPath: string): string {
   const dir = path.join(os.homedir(), ".claude");
   fs.mkdirSync(dir, { recursive: true });
-  return writeMcpJson(dir, projectPath);
+  return writeMcpJson(dir, projectPath, true /* dynamic */);
 }
