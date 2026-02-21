@@ -1,0 +1,29 @@
+{
+  "name": "memex",
+  "version": "0.1.0",
+  "description": "Persistent memory for any AI terminal agent",
+  "main": "dist/cli.js",
+  "bin": {
+    "memex": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/cli.ts",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.3",
+    "openai": "^4.77.0",
+    "node-pty": "^1.0.0",
+    "commander": "^12.1.0",
+    "chalk": "^4.1.2",
+    "ora": "^5.4.1",
+    "strip-ansi": "^6.0.1",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "typescript": "^5.7.3",
+    "ts-node": "^10.9.2"
+  }
+}
