@@ -24,9 +24,30 @@ memex resume claude
 Memory injected as first message → agent has full context
 ```
 
-Memory is **project-scoped** — tied to the directory you run Memex from. Each project has its own independent memory file.
+Memory is **project-scoped** — tied to the directory you run Memex from. Each project has its own independent memory file. Session recording uses the macOS built-in `script` command — no native dependencies or compilation required.
 
-Session recording uses the macOS built-in `script` command — no native dependencies or compilation required.
+---
+
+## Quickstart
+
+```bash
+# 1. Clone and build
+git clone https://github.com/patravishek/memex.git
+cd memex
+npm install && npm run build
+npm link
+
+# 2. Add your API key to ~/.zshrc
+echo 'export ANTHROPIC_API_KEY=sk-ant-...' >> ~/.zshrc
+source ~/.zshrc
+
+# 3. Go to any project and start a tracked session
+cd ~/your-project
+memex start claude
+
+# 4. Next day — resume with full context restored
+memex resume claude
+```
 
 ---
 
@@ -46,21 +67,20 @@ git clone https://github.com/patravishek/memex.git
 cd memex
 npm install
 npm run build
-```
-
-Link it globally so you can run `memex` from any project directory:
-
-```bash
 npm link
 ```
+
+`npm link` makes the `memex` command available globally from any directory.
 
 ---
 
 ## Configuration
 
-Memex reads API keys from your **shell environment** — the same place you already keep secrets. No `.env` file required.
+Memex reads API keys from your **shell environment** — no `.env` file required. Add your key to `~/.zshrc` (or `~/.bashrc`) and reload:
 
-Add one of the following to your `~/.zshrc` (or `~/.bashrc`):
+```bash
+source ~/.zshrc
+```
 
 ### Anthropic (default)
 
@@ -87,17 +107,11 @@ export LITELLM_MODEL=claude-3-haiku    # must match your proxy's model name
 export LITELLM_TEAM_ID=your_team_id   # optional — for team-based routing
 ```
 
-Memex uses the OpenAI SDK pointed at your LiteLLM proxy URL, so it works with **any model your enterprise has configured** — Claude, GPT-4, Mistral, Llama, and more.
-
-After editing your shell config, reload it:
-
-```bash
-source ~/.zshrc
-```
+Memex uses the OpenAI SDK pointed at your LiteLLM proxy URL, so it works with **any model your enterprise has configured** — Claude, GPT-4, Mistral, Llama, and more. The `LITELLM_MODEL` value must match exactly what your proxy exposes (check with your LiteLLM admin).
 
 ### Provider auto-detection order
 
-Memex auto-detects the provider from whichever keys are present:
+Memex auto-detects the provider from whichever keys are present in the environment:
 
 1. **LiteLLM** — if both `LITELLM_API_KEY` and `LITELLM_BASE_URL` are set
 2. **Anthropic** — if `ANTHROPIC_API_KEY` is set
@@ -107,7 +121,7 @@ Override explicitly with `export AI_PROVIDER=anthropic|openai|litellm` if needed
 
 ### Optional: `.env` file
 
-If you prefer not to set shell variables globally, Memex also accepts a `.env` file in the repo directory. Shell environment variables always take precedence over `.env`.
+If you prefer not to set shell variables globally, Memex also accepts a `.env` file inside the repo directory. Shell environment variables always take precedence over `.env`.
 
 ```bash
 cp .env.example .env
@@ -130,7 +144,7 @@ memex start claude
 memex start aider
 memex start sgpt
 
-# Run from a specific project directory
+# Run against a specific project directory
 memex start claude --project /path/to/project
 ```
 
@@ -222,7 +236,7 @@ memex forget
 
 ### `memex compress`
 
-Manually re-run compression on the latest session log. Useful if compression failed at the end of a session, or if you want to force a memory refresh.
+Manually re-run compression on the latest session log. Useful if compression failed at the end of a session or you want to force a memory refresh.
 
 ```bash
 memex compress
@@ -236,17 +250,17 @@ memex compress
 .memex/                         # Created in your project root
 ├── memory.json                 # Compressed project memory (small, safe to commit)
 └── sessions/
-    ├── 2026-02-18T10-00.jsonl  # Raw session log
-    └── 2026-02-18T14-30.jsonl
+    ├── 2026-02-18T10-00.jsonl  # Structured session log
+    └── 2026-02-18T10-00-raw.txt  # Raw terminal recording
 ```
 
-Add this to your `.gitignore` to keep raw logs out of version control:
+Add this to your project's `.gitignore` to keep raw session logs out of version control:
 
 ```
 .memex/sessions/
 ```
 
-The `memory.json` file itself is small and human-readable. Committing it means your whole team shares the same project context — useful for onboarding or handoffs.
+The `memory.json` file is small and human-readable. Committing it means your whole team shares the same project context — useful for onboarding or handoffs.
 
 ---
 
@@ -267,17 +281,15 @@ The `memory.json` file itself is small and human-readable. Committing it means y
 
 ## Supported providers
 
-| Provider | Set `AI_PROVIDER` to | Notes |
+| Provider | Key variable | Default model |
 |---|---|---|
-| Anthropic | `anthropic` | Direct API, default model: `claude-3-haiku-20240307` |
-| OpenAI | `openai` | Direct API, default model: `gpt-4o-mini` |
-| LiteLLM | `litellm` | Enterprise proxy, model depends on your deployment |
+| Anthropic | `ANTHROPIC_API_KEY` | `claude-3-haiku-20240307` |
+| OpenAI | `OPENAI_API_KEY` | `gpt-4o-mini` |
+| LiteLLM | `LITELLM_API_KEY` + `LITELLM_BASE_URL` | Set via `LITELLM_MODEL` |
 
 ---
 
 ## Works with any agent
-
-Memex wraps any terminal-based AI agent:
 
 | Agent | Command |
 |---|---|
@@ -292,17 +304,11 @@ Memex wraps any terminal-based AI agent:
 
 ### Claude CLI users
 
-If you use Claude CLI logged in via claude.ai (rather than an API key), you may see an auth conflict warning if `ANTHROPIC_API_KEY` is set in your shell environment. Memex automatically strips its own API keys from the environment it passes to the wrapped agent, so this warning should not appear. If it does, run:
+Memex automatically strips its own API keys from the environment before passing it to the wrapped agent. This prevents the auth conflict warning that Claude CLI shows when `ANTHROPIC_API_KEY` is set in the environment but you are logged in via claude.ai.
 
-```bash
-claude /logout
-```
+### Key isolation
 
-Then log back in via claude.ai. Memex uses its own `.env` file for compression — your Claude CLI session is not affected.
-
-### `.env` file location
-
-Memex looks for its `.env` file in the directory where it is installed (the cloned repo), not in your project directory. Your project's own `.env` files are never read or modified by Memex.
+Your project's own `.env` files are never read or modified by Memex. Memex only reads from your shell environment and its own optional `.env` inside the repo directory.
 
 ---
 
