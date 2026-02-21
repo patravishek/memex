@@ -147,13 +147,37 @@ program
       console.log();
     }
 
-    // Write context to a file — cleaner than piping through stdin which
-    // causes broken character spacing in the terminal
+    // Inject context via CLAUDE.md — Claude Code reads this automatically
+    // on startup, making it far more reliable than stdin injection.
+    // For other agents, we fall back to a stdin injection via RESUME.md.
+    const claudeMdPath = path.join(projectPath, "CLAUDE.md");
     const resumeFilePath = path.join(memexDir, "RESUME.md");
+    let injectedViaClauldeMd = false;
+    let originalClaudeMd: string | null = null;
+
     if (memory) {
       writeResumeFile(memory, resumeFilePath);
-      console.log(chalk.dim(`  Context written to: ${resumeFilePath}`));
-      console.log(chalk.dim(`  Claude will read this automatically if it finds RESUME.md\n`));
+
+      if (command === "claude") {
+        // Prepend memex context to CLAUDE.md — Claude reads this on startup
+        originalClaudeMd = fs.existsSync(claudeMdPath)
+          ? fs.readFileSync(claudeMdPath, "utf-8")
+          : null;
+
+        const memexSection = [
+          "<!-- MEMEX_CONTEXT_START -->",
+          fs.readFileSync(resumeFilePath, "utf-8"),
+          "<!-- MEMEX_CONTEXT_END -->",
+          "",
+        ].join("\n");
+
+        const existing = originalClaudeMd ? `\n\n${originalClaudeMd}` : "";
+        fs.writeFileSync(claudeMdPath, memexSection + existing, "utf-8");
+        injectedViaClauldeMd = true;
+        console.log(chalk.dim("  Context injected via CLAUDE.md — will load automatically\n"));
+      } else {
+        console.log(chalk.dim(`  Context written to: ${resumeFilePath}\n`));
+      }
     }
 
     const logger = new SessionLogger(memexDir);
@@ -164,8 +188,8 @@ program
         command,
         args,
         cwd: projectPath,
-        // Inject a short one-liner pointing to the file instead of the full blob
-        injectOnReady: memory
+        // Only use stdin injection for non-Claude agents
+        injectOnReady: !injectedViaClauldeMd && memory
           ? `Please read the file ${resumeFilePath} to restore context from our previous sessions, then ask how to continue.`
           : undefined,
         injectDelayMs: 3000,
@@ -188,6 +212,14 @@ program
         );
       }
     } finally {
+      // Restore CLAUDE.md to its original state
+      if (injectedViaClauldeMd) {
+        if (originalClaudeMd === null) {
+          fs.rmSync(claudeMdPath, { force: true });
+        } else {
+          fs.writeFileSync(claudeMdPath, originalClaudeMd, "utf-8");
+        }
+      }
       if (fs.existsSync(resumeFilePath)) fs.unlinkSync(resumeFilePath);
     }
   });
