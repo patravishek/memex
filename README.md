@@ -30,22 +30,32 @@ Memory is **project-scoped** — tied to the directory you run Memex from. Each 
 
 ## Quickstart
 
-```bash
-# 1. Clone and build
-git clone https://github.com/patravishek/memex.git
-cd memex
-npm install && npm run build
-npm link
+### Via Homebrew (recommended)
 
-# 2. Add your API key to ~/.zshrc
+```bash
+brew tap patravishek/memex
+brew install memex
+```
+
+### Via npm / manual
+
+```bash
+git clone https://github.com/patravishek/memex.git
+cd memex && npm install && npm run build && npm link
+```
+
+### Then
+
+```bash
+# Add your API key to ~/.zshrc
 echo 'export ANTHROPIC_API_KEY=sk-ant-...' >> ~/.zshrc
 source ~/.zshrc
 
-# 3. Go to any project and start a tracked session
+# Go to any project and start a tracked session
 cd ~/your-project
 memex start claude
 
-# 4. Next day — resume with full context restored
+# Next day — resume with full context restored
 memex resume claude
 ```
 
@@ -60,7 +70,20 @@ memex resume claude
 - An API key from Anthropic, OpenAI, or a LiteLLM enterprise proxy
 - Any AI terminal agent (e.g. [Claude CLI](https://docs.anthropic.com/en/docs/claude-code))
 
-### Setup
+### Homebrew (recommended)
+
+```bash
+brew tap patravishek/memex
+brew install memex
+```
+
+Homebrew handles Node.js and all dependencies automatically. To update later:
+
+```bash
+brew upgrade memex
+```
+
+### Manual (npm)
 
 ```bash
 git clone https://github.com/patravishek/memex.git
@@ -70,7 +93,7 @@ npm run build
 npm link
 ```
 
-`npm link` makes the `memex` command available globally from any directory.
+`npm link` makes `memex` available globally from any directory.
 
 ---
 
