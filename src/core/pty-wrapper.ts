@@ -86,8 +86,7 @@ async function wrapWithScript(
       stdio: "inherit",
       cwd: options.cwd ?? process.cwd(),
       env: {
-        ...process.env,
-        // Pass the context file path if resuming — agent can be told to read it
+        ...sanitizeEnv(process.env),
         ...(injectFile ? { MEMEX_CONTEXT_FILE: injectFile } : {}),
       },
     });
@@ -153,7 +152,7 @@ async function wrapWithSpawn(
       {
         stdio: "inherit",
         cwd: options.cwd ?? process.cwd(),
-        env: process.env as Record<string, string>,
+        env: sanitizeEnv(process.env),
       }
     );
 
@@ -175,6 +174,31 @@ async function wrapWithSpawn(
       });
     });
   });
+}
+
+/**
+ * Strip Memex-internal API keys from the environment before passing it to the
+ * wrapped agent. This prevents conflicts like Claude CLI warning about
+ * ANTHROPIC_API_KEY clashing with a claude.ai login session.
+ */
+function sanitizeEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const MEMEX_ONLY_KEYS = [
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "LITELLM_API_KEY",
+    "LITELLM_BASE_URL",
+    "LITELLM_MODEL",
+    "LITELLM_TEAM_ID",
+    "ANTHROPIC_MODEL",
+    "OPENAI_MODEL",
+    "AI_PROVIDER",
+  ];
+
+  return Object.fromEntries(
+    Object.entries(env)
+      .filter(([key]) => !MEMEX_ONLY_KEYS.includes(key))
+      .filter((entry): entry is [string, string] => entry[1] !== undefined)
+  );
 }
 
 export async function wrapProcess(
