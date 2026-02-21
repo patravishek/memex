@@ -320,6 +320,14 @@ Your project's own `.env` files are never read or modified by Memex. Memex only 
 
 ---
 
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned features across upcoming versions — including SQLite storage, MCP server support, a local web UI, semantic vector search, and more.
+
+Contributions welcome. If a feature matters to you, open an issue.
+
+---
+
 ## License
 
 MIT
