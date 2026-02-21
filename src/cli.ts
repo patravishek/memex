@@ -33,6 +33,7 @@ program
   .name("memex")
   .description("Persistent memory for any AI terminal agent")
   .version("0.2.0")
+  .addHelpText("afterAll", "\n  npm: @patravishek/memex  |  https://github.com/patravishek/memex")
   .hook("preAction", (thisCommand) => {
     const aiCommands = ["start", "resume", "compress"];
     if (!aiCommands.includes(thisCommand.args[0])) return;

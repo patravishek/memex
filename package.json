@@ -1,15 +1,46 @@
 {
-  "name": "memex",
+  "name": "@patravishek/memex",
   "version": "0.2.0",
-  "description": "Persistent memory for any AI terminal agent",
+  "description": "Persistent memory for any AI terminal agent — Claude, GPT, Aider and more",
   "main": "dist/cli.js",
   "bin": {
     "memex": "./dist/cli.js"
   },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "dev": "ts-node src/cli.ts",
     "start": "node dist/cli.js"
+  },
+  "keywords": [
+    "ai",
+    "claude",
+    "memory",
+    "context",
+    "agent",
+    "llm",
+    "cli",
+    "persistent",
+    "session",
+    "terminal"
+  ],
+  "author": "Avishek Patra <patravishek@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/patravishek/memex#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/patravishek/memex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/patravishek/memex/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.36.3",

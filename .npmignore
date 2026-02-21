@@ -1,0 +1,7 @@
+src/
+*.ts
+tsconfig.json
+.env
+.env.example
+.memex/
+ROADMAP.md
