@@ -28,7 +28,14 @@ Memory is **project-scoped** — tied to the directory you run Memex from. Each 
 
 ---
 
-## Quickstart
+## Install
+
+### Prerequisites
+
+- macOS
+- Node.js 18+
+- An API key from Anthropic, OpenAI, or a LiteLLM enterprise proxy
+- Any AI terminal agent (e.g. [Claude CLI](https://docs.anthropic.com/en/docs/claude-code))
 
 ### Via Homebrew (recommended)
 
@@ -36,68 +43,29 @@ Memory is **project-scoped** — tied to the directory you run Memex from. Each 
 brew install patravishek/memex/memex
 ```
 
-### Via npm / manual
+The `patravishek/memex/memex` format is Homebrew's shorthand for a third-party tap — it registers the tap and installs the formula in a single command, no separate `brew tap` step needed.
 
-```bash
-git clone https://github.com/patravishek/memex.git
-cd memex && npm install && npm run build && npm link
-```
-
-### Then
-
-```bash
-# Add your API key to ~/.zshrc
-echo 'export ANTHROPIC_API_KEY=sk-ant-...' >> ~/.zshrc
-source ~/.zshrc
-
-# Go to any project and start a tracked session
-cd ~/your-project
-memex start claude
-
-# Next day — resume with full context restored
-memex resume claude
-```
-
----
-
-## Install
-
-### Prerequisites
-
-- macOS (uses the built-in `script` command for session recording)
-- Node.js 18+
-- An API key from Anthropic, OpenAI, or a LiteLLM enterprise proxy
-- Any AI terminal agent (e.g. [Claude CLI](https://docs.anthropic.com/en/docs/claude-code))
-
-### Homebrew (recommended)
-
-```bash
-brew install patravishek/memex/memex
-```
-
-Homebrew handles Node.js and all dependencies automatically. To update later:
+To upgrade later:
 
 ```bash
 brew upgrade memex
 ```
 
-### Manual (npm)
+### Via npm / manual
 
 ```bash
 git clone https://github.com/patravishek/memex.git
 cd memex
-npm install
-npm run build
-npm link
+npm install && npm run build && npm link
 ```
 
-`npm link` makes `memex` available globally from any directory.
+`npm link` makes the `memex` command available globally from any directory.
 
 ---
 
 ## Configuration
 
-Memex reads API keys from your **shell environment** — no `.env` file required. Add your key to `~/.zshrc` (or `~/.bashrc`) and reload:
+Memex reads API keys from your **shell environment** — no config file required. Add your key to `~/.zshrc` (or `~/.bashrc`) and reload:
 
 ```bash
 source ~/.zshrc
@@ -142,11 +110,30 @@ Override explicitly with `export AI_PROVIDER=anthropic|openai|litellm` if needed
 
 ### Optional: `.env` file
 
-If you prefer not to set shell variables globally, Memex also accepts a `.env` file inside the repo directory. Shell environment variables always take precedence over `.env`.
+If you prefer not to set shell variables globally, Memex also accepts a `.env` file inside the cloned repo directory. Shell environment variables always take precedence over `.env`.
 
 ```bash
 cp .env.example .env
 # edit .env with your keys
+```
+
+---
+
+## Quickstart
+
+```bash
+# Install
+brew install patravishek/memex/memex
+
+# Add your API key to ~/.zshrc
+echo 'export ANTHROPIC_API_KEY=sk-ant-...' >> ~/.zshrc && source ~/.zshrc
+
+# Go to any project and start a tracked session
+cd ~/your-project
+memex start claude
+
+# Next day — resume with full context restored
+memex resume claude
 ```
 
 ---
@@ -268,10 +255,10 @@ memex compress
 ## Project structure
 
 ```
-.memex/                         # Created in your project root
-├── memory.json                 # Compressed project memory (small, safe to commit)
+.memex/                           # Created in your project root
+├── memory.json                   # Compressed project memory (small, safe to commit)
 └── sessions/
-    ├── 2026-02-18T10-00.jsonl  # Structured session log
+    ├── 2026-02-18T10-00.jsonl    # Structured session log
     └── 2026-02-18T10-00-raw.txt  # Raw terminal recording
 ```
 
