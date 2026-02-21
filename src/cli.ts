@@ -14,16 +14,26 @@ import {
   formatMemoryForPrompt,
   getMemexDir,
   memoryExists,
+  clearMemory,
 } from "./memory/store.js";
+import { getDb } from "./storage/db.js";
+import {
+  createSession,
+  finalizeSession,
+  listSessions,
+  getSession,
+  searchSessions,
+  pruneOldSessions,
+  SessionRow,
+} from "./storage/queries.js";
 
 const program = new Command();
 
 program
   .name("memex")
   .description("Persistent memory for any AI terminal agent")
-  .version("0.1.0")
+  .version("0.2.0")
   .hook("preAction", (thisCommand) => {
-    // Commands that need AI — skip check for status/forget/list
     const aiCommands = ["start", "resume", "compress"];
     if (!aiCommands.includes(thisCommand.args[0])) return;
 
@@ -44,9 +54,7 @@ program
           "    export LITELLM_API_KEY=... LITELLM_BASE_URL=https://your-proxy.com\n"
         )
       );
-      console.error(
-        chalk.dim("  Then reload your shell: source ~/.zshrc\n")
-      );
+      console.error(chalk.dim("  Then reload your shell: source ~/.zshrc\n"));
       process.exit(1);
     }
   });
@@ -73,14 +81,14 @@ program
           `  Memory loaded — last updated ${new Date(memory.lastUpdated).toLocaleString()}`
         )
       );
-      console.log(
-        chalk.dim(`  Focus: ${memory.currentFocus || "not set"}\n`)
-      );
+      console.log(chalk.dim(`  Focus: ${memory.currentFocus || "not set"}\n`));
     } else {
       initMemory(projectPath);
       console.log(chalk.dim("  No memory found — initialized fresh.\n"));
     }
 
+    const db = getDb(memexDir);
+    const sessionId = createSession(db, projectPath, command);
     const logger = new SessionLogger(memexDir);
     const args = options.args ? options.args.split(" ").filter(Boolean) : [];
 
@@ -95,7 +103,8 @@ program
         result.transcript,
         projectPath,
         result.logPath,
-        logger.getConversationTurns()
+        logger.getConversationTurns(),
+        sessionId
       );
     } catch (err) {
       const errMsg = (err as Error).message;
@@ -105,7 +114,8 @@ program
           transcript,
           projectPath,
           logger.getLogPath(),
-          logger.getConversationTurns()
+          logger.getConversationTurns(),
+          sessionId
         );
       } else {
         console.error(chalk.red(`\n  Session ended: ${errMsg}`));
@@ -147,9 +157,6 @@ program
       console.log();
     }
 
-    // Inject context via CLAUDE.md — Claude Code reads this automatically
-    // on startup, making it far more reliable than stdin injection.
-    // For other agents, we fall back to a stdin injection via RESUME.md.
     const claudeMdPath = path.join(projectPath, "CLAUDE.md");
     const resumeFilePath = path.join(memexDir, "RESUME.md");
     let injectedViaClauldeMd = false;
@@ -159,7 +166,6 @@ program
       writeResumeFile(memory, resumeFilePath);
 
       if (command === "claude") {
-        // Prepend memex context to CLAUDE.md — Claude reads this on startup
         originalClaudeMd = fs.existsSync(claudeMdPath)
           ? fs.readFileSync(claudeMdPath, "utf-8")
           : null;
@@ -181,6 +187,8 @@ program
       }
     }
 
+    const db = getDb(memexDir);
+    const sessionId = createSession(db, projectPath, command);
     const logger = new SessionLogger(memexDir);
     const args = options.args ? options.args.split(" ").filter(Boolean) : [];
 
@@ -189,7 +197,6 @@ program
         command,
         args,
         cwd: projectPath,
-        // Only use stdin injection for non-Claude agents
         injectOnReady: !injectedViaClauldeMd && memory
           ? `Please read the file ${resumeFilePath} to restore context from our previous sessions, then ask how to continue.`
           : undefined,
@@ -200,7 +207,8 @@ program
         result.transcript,
         projectPath,
         result.logPath,
-        logger.getConversationTurns()
+        logger.getConversationTurns(),
+        sessionId
       );
     } catch (err) {
       const transcript = logger.getTranscript();
@@ -209,11 +217,11 @@ program
           transcript,
           projectPath,
           logger.getLogPath(),
-          logger.getConversationTurns()
+          logger.getConversationTurns(),
+          sessionId
         );
       }
     } finally {
-      // Restore CLAUDE.md to its original state
       if (injectedViaClauldeMd) {
         if (originalClaudeMd === null) {
           fs.rmSync(claudeMdPath, { force: true });
@@ -236,30 +244,183 @@ program
 
     if (!memory) {
       console.log(
-        chalk.yellow(
-          "\n  No memory found. Run `memex start` to begin tracking.\n"
-        )
+        chalk.yellow("\n  No memory found. Run `memex start` to begin tracking.\n")
       );
       return;
     }
 
     console.log(chalk.bold.magenta("\n  memex — project memory\n"));
-    console.log(formatMemoryForPrompt(memory)
-      .split("\n")
-      .map((l) => `  ${l}`)
-      .join("\n")
+    console.log(
+      formatMemoryForPrompt(memory)
+        .split("\n")
+        .map((l) => `  ${l}`)
+        .join("\n")
     );
 
     const memexDir = getMemexDir(projectPath);
-    const sessionsDir = path.join(memexDir, "sessions");
-    if (fs.existsSync(sessionsDir)) {
-      const count = fs.readdirSync(sessionsDir).length;
-      console.log(chalk.dim(`\n  Sessions logged: ${count}`));
-    }
+    const db = getDb(memexDir);
+    const sessions = listSessions(db, projectPath, 1000);
+    console.log(chalk.dim(`\n  Sessions recorded: ${sessions.length}`));
     console.log(
-      chalk.dim(
-        `  Memory file: ${path.join(getMemexDir(projectPath), "memory.json")}\n`
-      )
+      chalk.dim(`  Database: ${path.join(memexDir, "memex.db")}\n`)
+    );
+  });
+
+// ─── memex history ────────────────────────────────────────────────────────────
+program
+  .command("history")
+  .description("List past sessions for this project")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .option("-n, --limit <n>", "Number of sessions to show", "20")
+  .option("--all", "Show sessions across all projects", false)
+  .action((options) => {
+    const projectPath = path.resolve(options.project);
+    const memexDir = getMemexDir(options.all ? process.cwd() : projectPath);
+    const db = getDb(memexDir);
+    const limit = parseInt(options.limit, 10);
+
+    const sessions = options.all
+      ? listSessions(db, undefined, limit)
+      : listSessions(db, projectPath, limit);
+
+    if (sessions.length === 0) {
+      console.log(
+        chalk.yellow("\n  No sessions recorded yet. Run `memex start` to begin.\n")
+      );
+      return;
+    }
+
+    console.log(chalk.bold.magenta("\n  memex — session history\n"));
+
+    for (const s of sessions) {
+      const date = new Date(s.started_at).toLocaleString();
+      const duration = s.ended_at
+        ? formatDuration(
+            new Date(s.ended_at).getTime() - new Date(s.started_at).getTime()
+          )
+        : "ongoing";
+
+      const status = s.ended_at ? chalk.dim(duration) : chalk.yellow("ongoing");
+      const summary = s.summary
+        ? chalk.white(truncate(s.summary, 80))
+        : chalk.dim("no summary");
+
+      console.log(
+        `  ${chalk.cyan(`#${s.id}`)}  ${chalk.dim(date)}  [${chalk.magenta(s.agent)}]  ${status}`
+      );
+      console.log(`     ${summary}`);
+      if (options.all) {
+        console.log(chalk.dim(`     ${s.project_path}`));
+      }
+      console.log();
+    }
+
+    console.log(chalk.dim(`  Use \`memex show <id>\` to view a session in full.\n`));
+  });
+
+// ─── memex show <id> ──────────────────────────────────────────────────────────
+program
+  .command("show <id>")
+  .description("Show full details of a past session")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .action((id: string, options) => {
+    const projectPath = path.resolve(options.project);
+    const memexDir = getMemexDir(projectPath);
+    const db = getDb(memexDir);
+
+    const session = getSession(db, parseInt(id, 10));
+    if (!session) {
+      console.log(chalk.red(`\n  Session #${id} not found.\n`));
+      process.exit(1);
+    }
+
+    console.log(chalk.bold.magenta(`\n  memex — session #${session.id}\n`));
+    console.log(chalk.dim(`  Project: ${session.project_path}`));
+    console.log(chalk.dim(`  Agent:   ${session.agent}`));
+    console.log(
+      chalk.dim(`  Started: ${new Date(session.started_at).toLocaleString()}`)
+    );
+    if (session.ended_at) {
+      console.log(
+        chalk.dim(`  Ended:   ${new Date(session.ended_at).toLocaleString()}`)
+      );
+      const ms =
+        new Date(session.ended_at).getTime() -
+        new Date(session.started_at).getTime();
+      console.log(chalk.dim(`  Duration: ${formatDuration(ms)}`));
+    }
+    if (session.log_file) {
+      console.log(chalk.dim(`  Log file: ${session.log_file}`));
+    }
+
+    if (session.summary) {
+      console.log(chalk.bold("\n  Summary:"));
+      console.log(`  ${session.summary}`);
+    }
+
+    if (session.turns.length > 0) {
+      console.log(chalk.bold(`\n  Conversation (${session.turns.length} turns):\n`));
+
+      for (const turn of session.turns) {
+        const label =
+          turn.role === "user"
+            ? chalk.green("  You")
+            : chalk.blue("  Agent");
+        const time = chalk.dim(new Date(turn.ts).toLocaleTimeString());
+        console.log(`${label}  ${time}`);
+        console.log(
+          chalk.white(
+            turn.content
+              .split("\n")
+              .map((l) => `    ${l}`)
+              .join("\n")
+          )
+        );
+        console.log();
+      }
+    } else {
+      console.log(chalk.dim("\n  No conversation turns recorded for this session.\n"));
+    }
+  });
+
+// ─── memex search <query> ─────────────────────────────────────────────────────
+program
+  .command("search <query>")
+  .description("Full-text search across session summaries")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .option("--all", "Search across all projects", false)
+  .action((query: string, options) => {
+    const projectPath = path.resolve(options.project);
+    const memexDir = getMemexDir(projectPath);
+    const db = getDb(memexDir);
+
+    const results = options.all
+      ? searchSessions(db, query)
+      : searchSessions(db, query, projectPath);
+
+    if (results.length === 0) {
+      console.log(
+        chalk.yellow(`\n  No sessions match "${query}".\n`)
+      );
+      return;
+    }
+
+    console.log(chalk.bold.magenta(`\n  memex — search: "${query}"\n`));
+
+    for (const r of results) {
+      const date = new Date(r.started_at).toLocaleString();
+      console.log(
+        `  ${chalk.cyan(`#${r.id}`)}  ${chalk.dim(date)}  [${chalk.magenta(r.agent)}]`
+      );
+      if (options.all) {
+        console.log(chalk.dim(`     ${r.project_path}`));
+      }
+      console.log(`     ${chalk.white(r.snippet)}`);
+      console.log();
+    }
+
+    console.log(
+      chalk.dim(`  ${results.length} result(s). Use \`memex show <id>\` for details.\n`)
     );
   });
 
@@ -268,18 +429,17 @@ program
   .command("forget")
   .description("Clear all memory for this project")
   .option("-p, --project <path>", "Project directory", process.cwd())
-  .option("--keep-sessions", "Keep raw session logs, only clear memory", false)
+  .option("--keep-sessions", "Keep session history, only clear memory fields", false)
   .action((options) => {
     const projectPath = path.resolve(options.project);
     const memexDir = getMemexDir(projectPath);
-    const memPath = path.join(memexDir, "memory.json");
 
-    if (!fs.existsSync(memPath)) {
+    if (!memoryExists(projectPath)) {
       console.log(chalk.yellow("\n  No memory to clear.\n"));
       return;
     }
 
-    fs.rmSync(memPath);
+    clearMemory(projectPath, options.keepSessions);
 
     if (!options.keepSessions) {
       const sessionsDir = path.join(memexDir, "sessions");
@@ -288,7 +448,13 @@ program
       }
     }
 
-    console.log(chalk.green("\n  Memory cleared.\n"));
+    console.log(
+      chalk.green(
+        options.keepSessions
+          ? "\n  Memory fields cleared (session history preserved).\n"
+          : "\n  Memory cleared.\n"
+      )
+    );
   });
 
 // ─── memex compress ───────────────────────────────────────────────────────────
@@ -332,12 +498,38 @@ program
     await runCompression(transcript, projectPath, latest);
   });
 
+// ─── memex prune ─────────────────────────────────────────────────────────────
+program
+  .command("prune")
+  .description("Delete session records older than N days")
+  .argument("[days]", "Retention period in days", "30")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .action((days: string, options) => {
+    const projectPath = path.resolve(options.project);
+    const memexDir = getMemexDir(projectPath);
+    const db = getDb(memexDir);
+    const keepDays = parseInt(days, 10);
+
+    const removed = pruneOldSessions(db, projectPath, keepDays);
+
+    if (removed === 0) {
+      console.log(
+        chalk.dim(`\n  No sessions older than ${keepDays} days to remove.\n`)
+      );
+    } else {
+      console.log(
+        chalk.green(`\n  Removed ${removed} session(s) older than ${keepDays} days.\n`)
+      );
+    }
+  });
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 async function runCompression(
   transcript: string,
   projectPath: string,
   logPath: string,
-  conversationTurns: ConversationTurn[] = []
+  conversationTurns: ConversationTurn[] = [],
+  sessionId?: number
 ): Promise<void> {
   if (!transcript || transcript.trim().length < 50) {
     console.log(chalk.dim("\n  Session too short to compress.\n"));
@@ -348,12 +540,17 @@ async function runCompression(
   try {
     const updated = await compressSession(transcript, projectPath, logPath);
 
-    // Save last N conversation turns so resume can replay them
-    // without depending on Claude's server-side session storage
-    if (conversationTurns.length > 0) {
-      const MAX_TURNS = 30;
-      updated.lastConversation = conversationTurns.slice(-MAX_TURNS);
-      saveMemory(projectPath, updated);
+    const MAX_TURNS = 30;
+    const turns = conversationTurns.slice(-MAX_TURNS);
+    updated.lastConversation = turns;
+    saveMemory(projectPath, updated);
+
+    // Persist the session record + turns in SQLite
+    if (sessionId !== undefined) {
+      const memexDir = getMemexDir(projectPath);
+      const db = getDb(memexDir);
+      const sessionSummary = updated.recentSessions.at(-1)?.summary ?? "";
+      finalizeSession(db, sessionId, sessionSummary, logPath, turns);
     }
 
     spinner.succeed(
@@ -363,7 +560,7 @@ async function runCompression(
     console.log(
       chalk.dim(`  Pending tasks: ${updated.pendingTasks.length}`) +
         chalk.dim(`, gotchas: ${updated.gotchas.length}`) +
-        chalk.dim(`, conversation turns saved: ${updated.lastConversation?.length ?? 0}\n`)
+        chalk.dim(`, conversation turns saved: ${turns.length}\n`)
     );
   } catch (err) {
     const reason = (err as Error).message;
@@ -375,6 +572,19 @@ async function runCompression(
       console.error(chalk.dim(`  Raw log saved to: ${logPath}\n`));
     }
   }
+}
+
+function formatDuration(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+function truncate(str: string, maxLen: number): string {
+  return str.length > maxLen ? str.slice(0, maxLen - 1) + "…" : str;
 }
 
 program.parse();

@@ -17,14 +17,14 @@ macOS `script` command records all terminal I/O
       ↓
 Session logged to .memex/sessions/
       ↓
-On exit: AI compresses transcript → .memex/memory.json
+On exit: AI compresses transcript → .memex/memex.db (SQLite)
       ↓
 memex resume claude
       ↓
 Memory injected as first message → agent has full context
 ```
 
-Memory is **project-scoped** — tied to the directory you run Memex from. Each project has its own independent memory file. Session recording uses the macOS built-in `script` command — no native dependencies or compilation required.
+Memory is **project-scoped** — tied to the directory you run Memex from. Each project has its own independent SQLite database at `.memex/memex.db`. Session recording uses the macOS built-in `script` command — no native dependencies or compilation required.
 
 ---
 
@@ -208,35 +208,100 @@ Example output:
   Pending tasks:
     - Add payment failure test cases
     - Fix flaky login selector on Safari
-    - Update README with deploy instructions
-
-  Key decisions:
-    - Using Stripe Elements over custom UI (better compliance)
-    - Soft deletes for orders, hard deletes for draft carts
 
   Gotchas:
     - chalk v5 is ESM-only, use v4 in CommonJS projects
-    - Prisma migrations need --skip-generate in CI
 
-  Last session (Feb 18, 2026):
-  Implemented the cart persistence logic and fixed a bug where
-  guest carts were lost on page refresh. Started on checkout flow.
+  Sessions recorded: 4
+  Database: /your-project/.memex/memex.db
+```
 
-  Sessions logged: 4
-  Memory file: /your-project/.memex/memory.json
+---
+
+### `memex history`
+
+List all past sessions for the current project with dates, durations, and summaries.
+
+```bash
+memex history
+
+# Show more results
+memex history -n 50
+
+# Show sessions across all projects
+memex history --all
+```
+
+Example output:
+
+```
+  memex — session history
+
+  #12  Feb 18, 2026, 10:30 AM  [claude]  42m 18s
+       Implemented cart persistence, fixed guest cart bug on page refresh.
+
+  #11  Feb 17, 2026, 3:12 PM   [claude]  1h 5m
+       Set up Stripe webhook handler and wrote integration tests.
+```
+
+---
+
+### `memex show <id>`
+
+View full details of any past session, including every recorded conversation turn.
+
+```bash
+memex show 12
+```
+
+---
+
+### `memex search <query>`
+
+Full-text search across all session summaries. Fast — backed by SQLite FTS5.
+
+```bash
+memex search "stripe webhook"
+memex search "authentication bug"
+
+# Search across all projects
+memex search "prisma migration" --all
+```
+
+Example output:
+
+```
+  memex — search: "stripe webhook"
+
+  #11  Feb 17, 2026  [claude]
+       Set up [stripe webhook] handler and wrote integration tests for...
+```
+
+---
+
+### `memex prune [days]`
+
+Delete session records older than N days (default: 30). Raw JSONL log files in `.memex/sessions/` are not touched — remove those separately if needed.
+
+```bash
+# Remove sessions older than 30 days (default)
+memex prune
+
+# Remove sessions older than 7 days
+memex prune 7
 ```
 
 ---
 
 ### `memex forget`
 
-Clear memory for the current project and start fresh.
+Clear all memory for the current project and start fresh.
 
 ```bash
-# Clear memory but keep raw session logs
+# Clear memory fields but keep session history
 memex forget --keep-sessions
 
-# Clear everything including session logs
+# Clear everything
 memex forget
 ```
 
@@ -256,10 +321,11 @@ memex compress
 
 ```
 .memex/                           # Created in your project root
-├── memory.json                   # Compressed project memory (small, safe to commit)
+├── memex.db                      # SQLite database (memory + full session history)
+├── memory.json.bak               # Auto-created if upgrading from v0.1 (safe to delete)
 └── sessions/
-    ├── 2026-02-18T10-00.jsonl    # Structured session log
-    └── 2026-02-18T10-00-raw.txt  # Raw terminal recording
+    ├── 2026-02-18T10-00.jsonl    # Structured session log (raw I/O entries)
+    └── 2026-02-18T10-00-raw.txt  # Raw terminal recording (from `script` command)
 ```
 
 Add this to your project's `.gitignore` to keep raw session logs out of version control:
@@ -268,7 +334,7 @@ Add this to your project's `.gitignore` to keep raw session logs out of version 
 .memex/sessions/
 ```
 
-The `memory.json` file is small and human-readable. Committing it means your whole team shares the same project context — useful for onboarding or handoffs.
+The `memex.db` file is small (typically a few KB per session). You can commit it so your whole team shares the same project memory — useful for onboarding or handoffs. Use `memex history` to inspect it without opening a SQL client.
 
 ---
 
@@ -322,7 +388,7 @@ Your project's own `.env` files are never read or modified by Memex. Memex only 
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for planned features across upcoming versions — including SQLite storage, MCP server support, a local web UI, semantic vector search, and more.
+See [ROADMAP.md](ROADMAP.md) for planned features across upcoming versions — including MCP server support, a local web UI, semantic vector search, and more.
 
 Contributions welcome. If a feature matters to you, open an issue.
 

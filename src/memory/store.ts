@@ -1,6 +1,14 @@
 import * as fs from "fs";
 import * as path from "path";
 import { ConversationTurn } from "../core/session-logger.js";
+import { getDb } from "../storage/db.js";
+import {
+  getProject,
+  upsertProject,
+  deleteProject,
+  projectExists,
+  migrateFromJson,
+} from "../storage/queries.js";
 
 export interface KeyDecision {
   decision: string;
@@ -40,26 +48,37 @@ export interface ProjectMemory {
   lastUpdated: string;
 }
 
-const MEMORY_FILE = "memory.json";
+const LEGACY_MEMORY_FILE = "memory.json";
 
 export function getMemexDir(projectPath: string): string {
   return path.join(projectPath, ".memex");
 }
 
 export function memoryExists(projectPath: string): boolean {
-  const memPath = path.join(getMemexDir(projectPath), MEMORY_FILE);
-  return fs.existsSync(memPath);
+  const memexDir = getMemexDir(projectPath);
+  const db = getDb(memexDir);
+  return projectExists(db, projectPath);
 }
 
 export function loadMemory(projectPath: string): ProjectMemory | null {
-  const memPath = path.join(getMemexDir(projectPath), MEMORY_FILE);
-  if (!fs.existsSync(memPath)) return null;
+  const memexDir = getMemexDir(projectPath);
+  const db = getDb(memexDir);
 
-  try {
-    return JSON.parse(fs.readFileSync(memPath, "utf-8")) as ProjectMemory;
-  } catch {
-    return null;
+  // Auto-migrate legacy memory.json on first access
+  const legacyPath = path.join(memexDir, LEGACY_MEMORY_FILE);
+  if (!projectExists(db, projectPath) && fs.existsSync(legacyPath)) {
+    try {
+      const legacy = JSON.parse(
+        fs.readFileSync(legacyPath, "utf-8")
+      ) as ProjectMemory;
+      migrateFromJson(db, legacy);
+      fs.renameSync(legacyPath, legacyPath + ".bak");
+    } catch {
+      // If migration fails, continue — worst case is a fresh start
+    }
   }
+
+  return getProject(db, projectPath);
 }
 
 export function saveMemory(
@@ -68,10 +87,9 @@ export function saveMemory(
 ): void {
   const memexDir = getMemexDir(projectPath);
   fs.mkdirSync(memexDir, { recursive: true });
-
   memory.lastUpdated = new Date().toISOString();
-  const memPath = path.join(memexDir, MEMORY_FILE);
-  fs.writeFileSync(memPath, JSON.stringify(memory, null, 2));
+  const db = getDb(memexDir);
+  upsertProject(db, memory);
 }
 
 export function initMemory(projectPath: string): ProjectMemory {
@@ -92,6 +110,22 @@ export function initMemory(projectPath: string): ProjectMemory {
 
   saveMemory(projectPath, memory);
   return memory;
+}
+
+export function clearMemory(
+  projectPath: string,
+  keepSessions = false
+): void {
+  const memexDir = getMemexDir(projectPath);
+  const db = getDb(memexDir);
+
+  if (keepSessions) {
+    // Only wipe project metadata, leave session history intact
+    const blank = initMemory(projectPath);
+    upsertProject(db, blank);
+  } else {
+    deleteProject(db, projectPath);
+  }
 }
 
 export function formatMemoryForPrompt(memory: ProjectMemory): string {

@@ -2,25 +2,25 @@
 
 This document outlines the planned evolution of Memex. Features are grouped by milestone. Priorities may shift based on community feedback.
 
-> **Current version:** v0.1.0  
+> **Current version:** v0.2.0  
 > **Core value prop:** Agent-agnostic persistent memory — works with Claude, GPT, Aider, or any CLI agent. Simple install, no heavy dependencies, enterprise-ready via LiteLLM.
 
 Contributions welcome. If a feature matters to you, open an issue or a PR.
 
 ---
 
-## v0.2 — Persistent Storage & Search
+## ✅ v0.2 — Persistent Storage & Search
 
 > Replace flat JSON with a proper database. Make memory queryable.
 
 **Why:** `memory.json` works for a single project but doesn't scale. As sessions accumulate, you can't search history, query past decisions, or see what happened across projects. SQLite gives us all of that with zero new infrastructure.
 
-- [ ] **SQLite storage** — migrate from `memory.json` to a local SQLite database per project (`.memex/memex.db`)
-- [ ] **Backwards compatibility** — auto-migrate existing `memory.json` on first run, keep JSON export available
-- [ ] **`memex search <query>`** — full-text search across all session logs and memory entries
-- [ ] **`memex history`** — list past sessions with dates, durations, and one-line summaries
-- [ ] **`memex show <session-id>`** — view full details of any past session
-- [ ] **Retention policy** — configurable auto-cleanup of raw session logs older than N days
+- [x] **SQLite storage** — migrated from `memory.json` to `.memex/memex.db` (WAL mode, FTS5 full-text index)
+- [x] **Backwards compatibility** — `memory.json` auto-migrated to SQLite on first run; original renamed to `memory.json.bak`
+- [x] **`memex search <query>`** — FTS5 full-text search across session summaries with highlighted snippets
+- [x] **`memex history`** — list past sessions with dates, durations, agent, and one-line summaries
+- [x] **`memex show <session-id>`** — view full session details including every recorded conversation turn
+- [x] **Retention policy** — `memex prune [days]` to delete session records older than N days (default: 30)
 
 ---
 
