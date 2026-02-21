@@ -19,21 +19,48 @@ export interface WrapResult {
   logPath: string;
 }
 
+// Common binary locations to check as fallback when shell lookup fails
+const COMMON_BIN_DIRS = [
+  "/opt/homebrew/bin",       // Homebrew on Apple Silicon
+  "/usr/local/bin",          // Homebrew on Intel / manual installs
+  "/usr/bin",
+  "/bin",
+  process.env.HOME ? `${process.env.HOME}/.local/bin` : "",
+  process.env.HOME ? `${process.env.HOME}/.nvm/versions/node/current/bin` : "",
+].filter(Boolean);
+
 function resolveCommandPath(command: string): string {
-  // Spawn through `which` to resolve the full path from the user's shell PATH.
-  // This handles nvm-managed binaries, homebrew installs, etc.
+  // If already an absolute path, use it directly
+  if (command.startsWith("/")) return command;
+
+  // Try resolving via login shell — sources ~/.zshrc / ~/.bash_profile
+  // so it finds nvm, homebrew, and other managed binaries
   try {
     const shell = process.env.SHELL ?? "/bin/zsh";
     const result = child_process.spawnSync(
       shell,
-      ["-i", "-c", `which ${command}`],
-      { encoding: "utf-8" }
+      ["-lc", `which ${command}`],
+      { encoding: "utf-8", timeout: 5000 }
     );
-    const resolved = result.stdout?.trim();
-    if (resolved && resolved.length > 0) return resolved;
+    const resolved = result.stdout?.trim().split("\n")[0];
+    if (resolved && resolved.startsWith("/")) return resolved;
   } catch {
-    // fall through to using command as-is
+    // fall through to directory scan
   }
+
+  // Fallback: scan known binary directories directly
+  const fs = require("fs") as typeof import("fs");
+  const path = require("path") as typeof import("path");
+  for (const dir of COMMON_BIN_DIRS) {
+    const candidate = path.join(dir, command);
+    try {
+      fs.accessSync(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch {
+      // not here, keep scanning
+    }
+  }
+
   return command;
 }
 
