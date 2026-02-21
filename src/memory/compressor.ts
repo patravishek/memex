@@ -153,29 +153,47 @@ export function buildResumePrompt(memory: ProjectMemory): string {
  * Includes the recent conversation history if available, simulating
  * Claude's --resume behaviour without relying on server-side sessions.
  */
+const CLAUDE_MD_CHAR_LIMIT = 35000; // Stay safely under Claude's 40k warning
+const MAX_TURNS_IN_CLAUDE_MD = 10;   // Last N turns of conversation to inject
+const MAX_TURN_CHARS = 1500;         // Truncate individual long turns
+
 export function writeResumeFile(memory: ProjectMemory, filePath: string): void {
   const fs = require("fs") as typeof import("fs");
   const lines: string[] = [buildResumePrompt(memory)];
 
   if (memory.lastConversation && memory.lastConversation.length > 0) {
+    const recentTurns = memory.lastConversation.slice(-MAX_TURNS_IN_CLAUDE_MD);
+
     lines.push("");
     lines.push("---");
     lines.push("");
     lines.push(
-      `Recent conversation history (last ${memory.lastConversation.length} turns from previous session):`
-    );
-    lines.push("");
-    lines.push(
-      "Use this to understand exactly where we left off, as if the session never ended."
+      `Last ${recentTurns.length} conversation turns (use to understand where we left off):`
     );
     lines.push("");
 
-    for (const turn of memory.lastConversation) {
+    for (const turn of recentTurns) {
       const label = turn.role === "user" ? "Human" : "Assistant";
-      lines.push(`**${label}:** ${turn.content}`);
+      const content =
+        turn.content.length > MAX_TURN_CHARS
+          ? turn.content.slice(0, MAX_TURN_CHARS) + "… [truncated]"
+          : turn.content;
+      lines.push(`**${label}:** ${content}`);
       lines.push("");
     }
   }
 
-  fs.writeFileSync(filePath, lines.join("\n"), "utf-8");
+  // Hard cap — truncate from the bottom (trim conversation history, keep memory)
+  let content = lines.join("\n");
+  if (content.length > CLAUDE_MD_CHAR_LIMIT) {
+    content = content.slice(0, CLAUDE_MD_CHAR_LIMIT);
+    // Ensure we don't cut mid-line
+    const lastNewline = content.lastIndexOf("\n");
+    if (lastNewline > CLAUDE_MD_CHAR_LIMIT * 0.8) {
+      content = content.slice(0, lastNewline);
+    }
+    content += "\n\n> [Memex: conversation history truncated to fit size limit]";
+  }
+
+  fs.writeFileSync(filePath, content, "utf-8");
 }
