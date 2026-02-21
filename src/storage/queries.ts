@@ -338,6 +338,57 @@ export function pruneOldSessions(
   return result.changes;
 }
 
+// ─── Observations ─────────────────────────────────────────────────────────────
+
+export type ObservationType = "note" | "task" | "decision" | "gotcha";
+
+export interface ObservationRow {
+  id: number;
+  project_path: string;
+  session_id: number | null;
+  type: ObservationType;
+  content: string;
+  source: "agent" | "user";
+  created_at: string;
+}
+
+export function saveObservation(
+  db: Database.Database,
+  projectPath: string,
+  type: ObservationType,
+  content: string,
+  sessionId?: number,
+  source: "agent" | "user" = "agent"
+): number {
+  const result = db.prepare(`
+    INSERT INTO observations (project_path, session_id, type, content, source, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(projectPath, sessionId ?? null, type, content, source, new Date().toISOString());
+  return result.lastInsertRowid as number;
+}
+
+export function getObservations(
+  db: Database.Database,
+  projectPath: string,
+  type?: ObservationType
+): ObservationRow[] {
+  if (type) {
+    return db.prepare(
+      "SELECT * FROM observations WHERE project_path = ? AND type = ? ORDER BY created_at DESC"
+    ).all(projectPath, type) as ObservationRow[];
+  }
+  return db.prepare(
+    "SELECT * FROM observations WHERE project_path = ? ORDER BY created_at DESC"
+  ).all(projectPath) as ObservationRow[];
+}
+
+export function clearObservations(
+  db: Database.Database,
+  projectPath: string
+): void {
+  db.prepare("DELETE FROM observations WHERE project_path = ?").run(projectPath);
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function parseJson<T>(raw: string, fallback: T): T {

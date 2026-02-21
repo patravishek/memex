@@ -21,7 +21,11 @@ On exit: AI compresses transcript → .memex/memex.db (SQLite)
       ↓
 memex resume claude
       ↓
-Memory injected as first message → agent has full context
+Short CLAUDE.md hint written + .mcp.json generated
+      ↓
+Claude starts, auto-connects to `memex serve` (stdio subprocess)
+      ↓
+Claude calls get_context(), get_gotchas(), save_observation()... on demand
 ```
 
 Memory is **project-scoped** — tied to the directory you run Memex from. Each project has its own independent SQLite database at `.memex/memex.db`. Session recording uses the macOS built-in `script` command — no native dependencies or compilation required.
@@ -167,20 +171,23 @@ On exit, you'll see:
 
 ### `memex resume [command]`
 
-Start a new session with full context automatically restored. Memex injects your project memory as the first message so the agent immediately understands where things stand.
+Resume with full context automatically restored. By default Memex uses **MCP mode** for Claude: a short hint is written to `CLAUDE.md` (~500 chars, no performance warning) and `.mcp.json` is generated so Claude auto-connects to `memex serve` as a subprocess on startup.
 
 ```bash
 memex resume claude
 ```
 
-The agent receives a structured context block covering:
+Claude gets a brief "where we left off" summary immediately, then calls MCP tools on demand:
 
-- What the project does and its tech stack
-- What you were working on last session
-- Pending tasks and key decisions
-- Gotchas — mistakes and dead ends to avoid repeating
+- `get_context()` — project summary, stack, focus
+- `get_gotchas()` — pitfalls to avoid before touching sensitive code
+- `search_sessions("auth bug")` — search past session history
+- `save_observation("gotcha", "...")` — save discoveries mid-session
 
-No more re-explaining. No more lost momentum.
+```bash
+# Fall back to full CLAUDE.md context dump (v0.1 behaviour)
+memex resume claude --no-mcp
+```
 
 ---
 
@@ -278,6 +285,40 @@ Example output:
 ```
 
 ---
+
+### `memex serve`
+
+Start the Memex MCP server in stdio mode. Claude Code and other MCP-compatible agents launch this automatically as a subprocess — you rarely need to run it manually.
+
+```bash
+memex serve
+memex serve --project /path/to/project
+```
+
+### `memex setup-mcp`
+
+Generate a `.mcp.json` file in the current project so Claude always has Memex tools available, even without `memex resume`. Commit the file to share with your team.
+
+```bash
+# Write .mcp.json in the current project directory
+memex setup-mcp
+
+# Write to ~/.claude/mcp.json — applies to every Claude session globally
+memex setup-mcp --global
+```
+
+This generates:
+
+```json
+{
+  "mcpServers": {
+    "memex": {
+      "command": "memex",
+      "args": ["serve", "--project", "/abs/path/to/project"]
+    }
+  }
+}
+```
 
 ### `memex prune [days]`
 

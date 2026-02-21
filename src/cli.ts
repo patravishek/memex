@@ -6,7 +6,9 @@ import * as path from "path";
 import * as fs from "fs";
 import { SessionLogger, ConversationTurn } from "./core/session-logger.js";
 import { wrapProcess } from "./core/pty-wrapper.js";
-import { compressSession, buildResumePrompt, writeResumeFile } from "./memory/compressor.js";
+import { compressSession, buildResumePrompt, buildMcpHint, writeResumeFile } from "./memory/compressor.js";
+import { startMcpServer } from "./mcp/server.js";
+import { writeMcpJson, removeMcpJson, writeGlobalMcpJson } from "./mcp/config.js";
 import {
   loadMemory,
   saveMemory,
@@ -32,7 +34,7 @@ const program = new Command();
 program
   .name("memex")
   .description("Persistent memory for any AI terminal agent")
-  .version("0.2.0")
+  .version("0.3.0")
   .addHelpText("afterAll", "\n  npm: @patravishek/memex  |  https://github.com/patravishek/memex")
   .hook("preAction", (thisCommand) => {
     const aiCommands = ["start", "resume", "compress"];
@@ -131,12 +133,25 @@ program
   .argument("[command]", "Agent command to run", "claude")
   .option("-p, --project <path>", "Project directory", process.cwd())
   .option("--args <args>", "Extra args to pass to the agent command", "")
+  .option(
+    "--no-mcp",
+    "Disable MCP mode: inject full context via CLAUDE.md instead (v0.1 behaviour)",
+    false
+  )
   .action(async (command: string, options) => {
     const projectPath = path.resolve(options.project);
     const memexDir = getMemexDir(projectPath);
     const memory = loadMemory(projectPath);
 
+    // MCP mode: on by default for Claude, off for other agents or when --no-mcp passed.
+    // In MCP mode we write a short hint (~500 chars) to CLAUDE.md + generate .mcp.json.
+    // The full memory dump is served on demand via MCP tools.
+    const useMcp = command === "claude" && options.mcp !== false;
+
     console.log(chalk.bold.magenta("\n  memex — resuming session\n"));
+    if (useMcp) {
+      console.log(chalk.dim("  Mode: MCP (context served on demand via tools)\n"));
+    }
 
     if (!memory) {
       console.log(
@@ -160,31 +175,60 @@ program
 
     const claudeMdPath = path.join(projectPath, "CLAUDE.md");
     const resumeFilePath = path.join(memexDir, "RESUME.md");
-    let injectedViaClauldeMd = false;
+    let injectedViaClaudeMd = false;
     let originalClaudeMd: string | null = null;
+    let wroteProjectMcpJson = false;
 
     if (memory) {
-      writeResumeFile(memory, resumeFilePath);
-
-      if (command === "claude") {
+      if (useMcp) {
+        // ── MCP mode: short hint in CLAUDE.md + .mcp.json in project root ──
         originalClaudeMd = fs.existsSync(claudeMdPath)
           ? fs.readFileSync(claudeMdPath, "utf-8")
           : null;
 
+        const hint = buildMcpHint(memory);
         const memexSection = [
           "<!-- MEMEX_CONTEXT_START -->",
-          fs.readFileSync(resumeFilePath, "utf-8"),
+          hint,
           "<!-- MEMEX_CONTEXT_END -->",
           "",
         ].join("\n");
 
         const existing = originalClaudeMd ? `\n\n${originalClaudeMd}` : "";
         fs.writeFileSync(claudeMdPath, memexSection + existing, "utf-8");
-        injectedViaClauldeMd = true;
-        console.log(chalk.dim(`  Context injected → ${claudeMdPath}`));
-        console.log(chalk.dim("  Claude reads this on startup — it will acknowledge the context when it starts\n"));
+        injectedViaClaudeMd = true;
+
+        // Generate .mcp.json so Claude launches `memex serve` automatically
+        const mcpJsonPath = writeMcpJson(projectPath, projectPath);
+        wroteProjectMcpJson = true;
+
+        console.log(chalk.dim(`  Context hint injected → ${claudeMdPath}`) + chalk.dim(` (${hint.length} chars)`));
+        console.log(chalk.dim(`  MCP config written    → ${mcpJsonPath}`));
+        console.log(chalk.dim("  Claude will auto-connect to Memex tools on startup\n"));
       } else {
-        console.log(chalk.dim(`  Context written to: ${resumeFilePath}\n`));
+        // ── Legacy mode: full context dump into CLAUDE.md / RESUME.md ──
+        writeResumeFile(memory, resumeFilePath);
+
+        if (command === "claude") {
+          originalClaudeMd = fs.existsSync(claudeMdPath)
+            ? fs.readFileSync(claudeMdPath, "utf-8")
+            : null;
+
+          const memexSection = [
+            "<!-- MEMEX_CONTEXT_START -->",
+            fs.readFileSync(resumeFilePath, "utf-8"),
+            "<!-- MEMEX_CONTEXT_END -->",
+            "",
+          ].join("\n");
+
+          const existing = originalClaudeMd ? `\n\n${originalClaudeMd}` : "";
+          fs.writeFileSync(claudeMdPath, memexSection + existing, "utf-8");
+          injectedViaClaudeMd = true;
+          console.log(chalk.dim(`  Context injected → ${claudeMdPath}`));
+          console.log(chalk.dim("  Claude reads this on startup — it will acknowledge the context when it starts\n"));
+        } else {
+          console.log(chalk.dim(`  Context written to: ${resumeFilePath}\n`));
+        }
       }
     }
 
@@ -198,7 +242,7 @@ program
         command,
         args,
         cwd: projectPath,
-        injectOnReady: !injectedViaClauldeMd && memory
+        injectOnReady: !injectedViaClaudeMd && memory
           ? `Please read the file ${resumeFilePath} to restore context from our previous sessions, then ask how to continue.`
           : undefined,
         injectDelayMs: 3000,
@@ -223,15 +267,70 @@ program
         );
       }
     } finally {
-      if (injectedViaClauldeMd) {
+      // Restore CLAUDE.md and clean up temp files
+      if (injectedViaClaudeMd) {
         if (originalClaudeMd === null) {
           fs.rmSync(claudeMdPath, { force: true });
         } else {
           fs.writeFileSync(claudeMdPath, originalClaudeMd, "utf-8");
         }
       }
+      // Remove the session-scoped .mcp.json (keep it only if setup-mcp was used)
+      if (wroteProjectMcpJson) {
+        removeMcpJson(projectPath);
+      }
       if (fs.existsSync(resumeFilePath)) fs.unlinkSync(resumeFilePath);
     }
+  });
+
+// ─── memex serve ──────────────────────────────────────────────────────────────
+program
+  .command("serve")
+  .description("Start the Memex MCP server (stdio transport) for an agent to connect to")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .action(async (options) => {
+    const projectPath = path.resolve(options.project);
+    // MCP server communicates over stdio — no console output after this point
+    // or it will corrupt the JSON-RPC framing.
+    await startMcpServer(projectPath);
+  });
+
+// ─── memex setup-mcp ──────────────────────────────────────────────────────────
+program
+  .command("setup-mcp")
+  .description("Generate .mcp.json so Claude Code auto-connects to Memex on startup")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .option("--global", "Write to ~/.claude/mcp.json (applies to all Claude sessions)", false)
+  .action((options) => {
+    const projectPath = path.resolve(options.project);
+
+    let filePath: string;
+    if (options.global) {
+      filePath = writeGlobalMcpJson(projectPath);
+      console.log(chalk.green(`\n  Global MCP config written → ${filePath}`));
+      console.log(chalk.dim("  Claude will use Memex tools in every session.\n"));
+    } else {
+      filePath = writeMcpJson(projectPath, projectPath);
+      console.log(chalk.green(`\n  MCP config written → ${filePath}`));
+      console.log(chalk.dim("  Commit this file to share Memex with your team.\n"));
+    }
+
+    console.log(chalk.bold("  Available tools once connected:"));
+    const tools = [
+      ["get_context", "Project summary, stack, current focus"],
+      ["get_tasks", "Pending tasks"],
+      ["get_decisions", "Key architectural decisions"],
+      ["get_gotchas", "Pitfalls to avoid"],
+      ["get_important_files", "Files worth knowing about"],
+      ["get_recent_conversation", "Last N conversation turns"],
+      ["search_sessions", "Full-text search across session history"],
+      ["get_session", "Full detail of any past session"],
+      ["save_observation", "Save notes, tasks, decisions mid-session"],
+    ];
+    for (const [name, desc] of tools) {
+      console.log(`  ${chalk.cyan(name.padEnd(28))} ${chalk.dim(desc)}`);
+    }
+    console.log();
   });
 
 // ─── memex status ─────────────────────────────────────────────────────────────

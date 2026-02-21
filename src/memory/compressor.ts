@@ -148,6 +148,48 @@ export function buildResumePrompt(memory: ProjectMemory): string {
 }
 
 /**
+ * Build a short (~500 char) CLAUDE.md hint used when MCP mode is active.
+ * Instead of dumping everything, it tells Claude where it left off and
+ * instructs it to use MCP tools for full context. This eliminates the
+ * "Large CLAUDE.md will impact performance" warning entirely.
+ */
+export function buildMcpHint(memory: ProjectMemory): string {
+  const lastSession = memory.recentSessions.at(-1);
+  const lastDate = lastSession
+    ? new Date(lastSession.date).toLocaleDateString()
+    : null;
+
+  const lines = [
+    "# Memex — Session Context (MCP mode)",
+    "",
+    "> Full memory is available via MCP tools. Use them to retrieve context on demand.",
+    "",
+    "---",
+    "",
+    `**Project:** ${memory.projectName}`,
+  ];
+
+  if (memory.currentFocus) {
+    lines.push(`**Current focus:** ${memory.currentFocus}`);
+  }
+
+  if (lastSession) {
+    lines.push(`**Last session (${lastDate}):** ${lastSession.summary}`);
+  }
+
+  lines.push(
+    "",
+    "**When you start:**",
+    "1. Call `get_context()` for the full project summary",
+    "2. Call `get_gotchas()` before touching any sensitive areas",
+    "3. Use `search_sessions(\"<topic>\")` to find relevant past work",
+    "4. Call `save_observation(type, content)` to record anything important mid-session"
+  );
+
+  return lines.join("\n");
+}
+
+/**
  * Write resume context to a markdown file so it can be read cleanly
  * without being piped through stdin (which causes formatting issues).
  * Includes the recent conversation history if available, simulating

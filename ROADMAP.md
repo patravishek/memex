@@ -2,7 +2,7 @@
 
 This document outlines the planned evolution of Memex. Features are grouped by milestone. Priorities may shift based on community feedback.
 
-> **Current version:** v0.2.0  
+> **Current version:** v0.3.0  
 > **Core value prop:** Agent-agnostic persistent memory — works with Claude, GPT, Aider, or any CLI agent. Simple install, no heavy dependencies, enterprise-ready via LiteLLM.
 
 Contributions welcome. If a feature matters to you, open an issue or a PR.
@@ -24,20 +24,25 @@ Contributions welcome. If a feature matters to you, open an issue or a PR.
 
 ---
 
-## v0.3 — MCP Server
+## ✅ v0.3 — MCP Server
 
-> Expose Memex memory as MCP tools so agents can pull context on demand instead of receiving a full dump.
+> Expose Memex memory as MCP tools so agents pull context on demand instead of receiving a full dump.
 
-**Why:** The current approach injects the entire memory blob as the first message. This wastes context tokens and gives the agent no control over what it retrieves. An MCP server lets the agent query memory like a database — asking for exactly what it needs, when it needs it.
+**Why:** Injecting 35k chars of context into `CLAUDE.md` wastes tokens and triggers Claude's performance warning. An MCP server lets the agent query memory like a database — asking for exactly what it needs, when it needs it.
 
-- [ ] **`memex serve`** — start a local MCP server exposing memory tools
-- [ ] **`memex:search`** tool — semantic + keyword search across session history
-- [ ] **`memex:get_context`** tool — retrieve current project summary and focus
-- [ ] **`memex:get_decisions`** tool — fetch key decisions made on this project
-- [ ] **`memex:get_gotchas`** tool — fetch known pitfalls and mistakes to avoid
-- [ ] **`memex:save`** tool — let the agent manually save important observations mid-session
-- [ ] **Auto-start MCP server** on `memex resume` and register it with the agent session
-- [ ] **MCP config snippet** — auto-generate `.mcp.json` or equivalent for quick agent setup
+- [x] **`memex serve`** — stdio MCP server exposing all memory as tools (zero network traffic; runs as agent subprocess)
+- [x] **`get_context`** tool — project name, description, stack, current focus
+- [x] **`get_tasks`** tool — pending tasks (memory + mid-session observations)
+- [x] **`get_decisions`** tool — key decisions with reasons
+- [x] **`get_gotchas`** tool — known pitfalls and mistakes to avoid
+- [x] **`get_important_files`** tool — files worth knowing about
+- [x] **`get_recent_conversation`** tool — last N conversation turns from previous session
+- [x] **`search_sessions`** tool — FTS search across all session summaries
+- [x] **`get_session`** tool — full detail of any past session by ID
+- [x] **`save_observation`** tool — save notes, tasks, decisions, gotchas mid-session without waiting for compression
+- [x] **Auto-start on `memex resume`** — generates `.mcp.json` + short CLAUDE.md hint (~500 chars, no performance warning); `--no-mcp` flag for legacy full-dump behaviour
+- [x] **`memex setup-mcp`** — generate `.mcp.json` permanently; `--global` flag writes to `~/.claude/mcp.json`
+- [x] **`observations` table** — schema migration v2; mid-session saves persist immediately and roll into compression
 
 ---
 

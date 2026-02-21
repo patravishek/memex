@@ -115,4 +115,24 @@ function runMigrations(db: Database.Database): void {
       INSERT INTO schema_version VALUES (1);
     `);
   }
+
+  if (currentVersion < 2) {
+    db.exec(`
+      -- Mid-session observations saved by the agent or user via MCP save_observation tool.
+      -- Surfaced immediately by get_* tools and rolled into memory on next compression.
+      CREATE TABLE IF NOT EXISTS observations (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_path TEXT NOT NULL,
+        session_id   INTEGER,
+        type         TEXT NOT NULL DEFAULT 'note',  -- note | task | decision | gotcha
+        content      TEXT NOT NULL,
+        source       TEXT NOT NULL DEFAULT 'agent', -- agent | user
+        created_at   TEXT NOT NULL,
+        FOREIGN KEY (project_path) REFERENCES project(path),
+        FOREIGN KEY (session_id)   REFERENCES sessions(id) ON DELETE SET NULL
+      );
+
+      INSERT INTO schema_version VALUES (2);
+    `);
+  }
 }
