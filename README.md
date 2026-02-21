@@ -69,7 +69,16 @@ ANTHROPIC_MODEL=claude-3-haiku-20240307
 OPENAI_API_KEY=sk-...
 AI_PROVIDER=openai
 OPENAI_MODEL=gpt-4o-mini
+
+# OR use LiteLLM (enterprise proxy)
+AI_PROVIDER=litellm
+LITELLM_API_KEY=your_litellm_key
+LITELLM_BASE_URL=https://litellm.your-company.com
+LITELLM_MODEL=claude-3-haiku        # must match a model in your proxy config
+LITELLM_TEAM_ID=your_team_id        # optional, for team-based routing
 ```
+
+> **LiteLLM users:** Memex uses the OpenAI SDK pointed at your LiteLLM proxy URL, so it works with any model your enterprise has configured — Claude, GPT-4, Mistral, etc. The `LITELLM_MODEL` value must match exactly what your LiteLLM deployment exposes.
 
 ---
 
