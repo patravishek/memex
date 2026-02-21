@@ -33,7 +33,7 @@ Memory is **project-scoped** — tied to the directory you run Memex from. Each 
 ### Prerequisites
 
 - Node.js 18+
-- An Anthropic or OpenAI API key
+- An API key from Anthropic, OpenAI, or a LiteLLM enterprise proxy
 - Any AI terminal agent (e.g. [Claude CLI](https://docs.anthropic.com/en/docs/claude-code))
 
 ### Setup
@@ -45,40 +45,59 @@ npm install
 npm run build
 ```
 
-Then link it globally so you can use `memex` from anywhere:
+Link it globally so you can run `memex` from any project directory:
 
 ```bash
 npm link
 ```
 
-### Configure your API key
+---
+
+## Configuration
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` and add your key:
+Memex supports three AI providers. Set `AI_PROVIDER` to choose one — or leave it unset and Memex will auto-detect based on which keys are present.
+
+### Anthropic (default)
 
 ```env
-# Use Anthropic (default)
-ANTHROPIC_API_KEY=sk-ant-...
 AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=claude-3-haiku-20240307
+```
 
-# OR use OpenAI
-OPENAI_API_KEY=sk-...
+### OpenAI
+
+```env
 AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
+```
 
-# OR use LiteLLM (enterprise proxy)
+### LiteLLM (enterprise proxy)
+
+Many enterprises route AI traffic through a [LiteLLM](https://docs.litellm.ai) proxy to centralise key management, cost tracking, and model governance. Memex supports this natively.
+
+```env
 AI_PROVIDER=litellm
 LITELLM_API_KEY=your_litellm_key
 LITELLM_BASE_URL=https://litellm.your-company.com
-LITELLM_MODEL=claude-3-haiku        # must match a model in your proxy config
-LITELLM_TEAM_ID=your_team_id        # optional, for team-based routing
+LITELLM_MODEL=claude-3-haiku
+LITELLM_TEAM_ID=your_team_id        # optional — for team-based routing
 ```
 
-> **LiteLLM users:** Memex uses the OpenAI SDK pointed at your LiteLLM proxy URL, so it works with any model your enterprise has configured — Claude, GPT-4, Mistral, etc. The `LITELLM_MODEL` value must match exactly what your LiteLLM deployment exposes.
+Memex uses the OpenAI SDK pointed at your LiteLLM proxy URL, so it works with **any model your enterprise has configured** — Claude, GPT-4, Mistral, Llama, and more. The `LITELLM_MODEL` value must match exactly what your proxy exposes (check with your LiteLLM admin).
+
+### Provider auto-detection order
+
+If `AI_PROVIDER` is not set, Memex detects the provider in this order:
+
+1. **LiteLLM** — if both `LITELLM_API_KEY` and `LITELLM_BASE_URL` are set
+2. **Anthropic** — if `ANTHROPIC_API_KEY` is set
+3. **OpenAI** — if `OPENAI_API_KEY` is set
 
 ---
 
@@ -95,6 +114,9 @@ memex start claude
 # Wrap any other agent
 memex start aider
 memex start sgpt
+
+# Run from a specific project directory
+memex start claude --project /path/to/project
 ```
 
 On exit, you'll see:
@@ -108,13 +130,14 @@ On exit, you'll see:
 
 ### `memex resume [command]`
 
-Start a new session with full context automatically restored. Memex injects your project memory as the first message so the agent immediately understands what you were working on.
+Start a new session with full context automatically restored. Memex injects your project memory as the first message so the agent immediately understands where things stand.
 
 ```bash
 memex resume claude
 ```
 
 The agent receives a structured context block covering:
+
 - What the project does and its tech stack
 - What you were working on last session
 - Pending tasks and key decisions
@@ -161,6 +184,9 @@ Example output:
   Last session (Feb 18, 2026):
   Implemented the cart persistence logic and fixed a bug where
   guest carts were lost on page refresh. Started on checkout flow.
+
+  Sessions logged: 4
+  Memory file: /your-project/.memex/memory.json
 ```
 
 ---
@@ -173,7 +199,7 @@ Clear memory for the current project and start fresh.
 # Clear memory but keep raw session logs
 memex forget --keep-sessions
 
-# Clear everything
+# Clear everything including session logs
 memex forget
 ```
 
@@ -181,7 +207,7 @@ memex forget
 
 ### `memex compress`
 
-Manually re-run compression on the latest session log. Useful if compression failed or you want to force an update.
+Manually re-run compression on the latest session log. Useful if compression failed at the end of a session, or if you want to force a memory refresh.
 
 ```bash
 memex compress
@@ -192,14 +218,20 @@ memex compress
 ## Project structure
 
 ```
-.memex/                        # Created in your project root (gitignored)
-├── memory.json                # Compressed project memory
+.memex/                         # Created in your project root
+├── memory.json                 # Compressed project memory (small, safe to commit)
 └── sessions/
-    ├── 2026-02-18T10-00.jsonl # Raw session log
+    ├── 2026-02-18T10-00.jsonl  # Raw session log
     └── 2026-02-18T14-30.jsonl
 ```
 
-Add `.memex/sessions/` to your `.gitignore` (raw logs can be large). The `memory.json` file is small and worth committing if you want shared memory across a team.
+Add this to your `.gitignore` to keep raw logs out of version control:
+
+```
+.memex/sessions/
+```
+
+The `memory.json` file itself is small and human-readable. Committing it means your whole team shares the same project context — useful for onboarding or handoffs.
 
 ---
 
@@ -214,7 +246,17 @@ Add `.memex/sessions/` to your `.gitignore` (raw logs can be large). The `memory
 | `keyDecisions` | Architectural and design decisions made |
 | `importantFiles` | Files referenced during the session |
 | `gotchas` | Problems hit, mistakes made, things to avoid |
-| `recentSessions` | Last 5 session summaries |
+| `recentSessions` | Summaries of the last 5 sessions |
+
+---
+
+## Supported providers
+
+| Provider | Set `AI_PROVIDER` to | Notes |
+|---|---|---|
+| Anthropic | `anthropic` | Direct API, default model: `claude-3-haiku-20240307` |
+| OpenAI | `openai` | Direct API, default model: `gpt-4o-mini` |
+| LiteLLM | `litellm` | Enterprise proxy, model depends on your deployment |
 
 ---
 
