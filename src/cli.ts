@@ -4,7 +4,6 @@ import chalk from "chalk";
 import ora from "ora";
 import * as path from "path";
 import * as fs from "fs";
-import * as dotenv from "dotenv";
 import { SessionLogger } from "./core/session-logger.js";
 import { wrapProcess } from "./core/pty-wrapper.js";
 import { compressSession, buildResumePrompt } from "./memory/compressor.js";
@@ -17,14 +16,40 @@ import {
   memoryExists,
 } from "./memory/store.js";
 
-dotenv.config();
-
 const program = new Command();
 
 program
   .name("memex")
   .description("Persistent memory for any AI terminal agent")
-  .version("0.1.0");
+  .version("0.1.0")
+  .hook("preAction", (thisCommand) => {
+    // Commands that need AI — skip check for status/forget/list
+    const aiCommands = ["start", "resume", "compress"];
+    if (!aiCommands.includes(thisCommand.args[0])) return;
+
+    const hasKey =
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.OPENAI_API_KEY ||
+      process.env.LITELLM_API_KEY;
+
+    if (!hasKey) {
+      console.error(chalk.red("\n  No AI provider configured.\n"));
+      console.error(
+        chalk.dim("  Add one of the following to your ~/.zshrc (or ~/.bashrc):\n")
+      );
+      console.error(chalk.dim("    export ANTHROPIC_API_KEY=sk-ant-..."));
+      console.error(chalk.dim("    export OPENAI_API_KEY=sk-..."));
+      console.error(
+        chalk.dim(
+          "    export LITELLM_API_KEY=... LITELLM_BASE_URL=https://your-proxy.com\n"
+        )
+      );
+      console.error(
+        chalk.dim("  Then reload your shell: source ~/.zshrc\n")
+      );
+      process.exit(1);
+    }
+  });
 
 // ─── memex start [command] ────────────────────────────────────────────────────
 program

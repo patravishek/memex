@@ -58,49 +58,61 @@ npm link
 
 ## Configuration
 
-```bash
-cp .env.example .env
-```
+Memex reads API keys from your **shell environment** — the same place you already keep secrets. No `.env` file required.
 
-Memex supports three AI providers. Set `AI_PROVIDER` to choose one — or leave it unset and Memex will auto-detect based on which keys are present.
+Add one of the following to your `~/.zshrc` (or `~/.bashrc`):
 
 ### Anthropic (default)
 
-```env
-AI_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-3-haiku-20240307
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+export ANTHROPIC_MODEL=claude-3-haiku-20240307   # optional
 ```
 
 ### OpenAI
 
-```env
-AI_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
+```bash
+export OPENAI_API_KEY=sk-...
+export OPENAI_MODEL=gpt-4o-mini   # optional
 ```
 
 ### LiteLLM (enterprise proxy)
 
 Many enterprises route AI traffic through a [LiteLLM](https://docs.litellm.ai) proxy to centralise key management, cost tracking, and model governance. Memex supports this natively.
 
-```env
-AI_PROVIDER=litellm
-LITELLM_API_KEY=your_litellm_key
-LITELLM_BASE_URL=https://litellm.your-company.com
-LITELLM_MODEL=claude-3-haiku
-LITELLM_TEAM_ID=your_team_id        # optional — for team-based routing
+```bash
+export LITELLM_API_KEY=your_litellm_key
+export LITELLM_BASE_URL=https://litellm.your-company.com
+export LITELLM_MODEL=claude-3-haiku    # must match your proxy's model name
+export LITELLM_TEAM_ID=your_team_id   # optional — for team-based routing
 ```
 
-Memex uses the OpenAI SDK pointed at your LiteLLM proxy URL, so it works with **any model your enterprise has configured** — Claude, GPT-4, Mistral, Llama, and more. The `LITELLM_MODEL` value must match exactly what your proxy exposes (check with your LiteLLM admin).
+Memex uses the OpenAI SDK pointed at your LiteLLM proxy URL, so it works with **any model your enterprise has configured** — Claude, GPT-4, Mistral, Llama, and more.
+
+After editing your shell config, reload it:
+
+```bash
+source ~/.zshrc
+```
 
 ### Provider auto-detection order
 
-If `AI_PROVIDER` is not set, Memex detects the provider in this order:
+Memex auto-detects the provider from whichever keys are present:
 
 1. **LiteLLM** — if both `LITELLM_API_KEY` and `LITELLM_BASE_URL` are set
 2. **Anthropic** — if `ANTHROPIC_API_KEY` is set
 3. **OpenAI** — if `OPENAI_API_KEY` is set
+
+Override explicitly with `export AI_PROVIDER=anthropic|openai|litellm` if needed.
+
+### Optional: `.env` file
+
+If you prefer not to set shell variables globally, Memex also accepts a `.env` file in the repo directory. Shell environment variables always take precedence over `.env`.
+
+```bash
+cp .env.example .env
+# edit .env with your keys
+```
 
 ---
 

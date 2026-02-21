@@ -1,8 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import * as dotenv from "dotenv";
+import * as path from "path";
+import * as fs from "fs";
 
-dotenv.config();
+// .env is optional — environment variables set in ~/.zshrc or ~/.bashrc take
+// precedence. The .env file (if present) only fills in what's missing.
+const envPath = path.join(__dirname, "../../.env");
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath, override: false });
+}
 
 export type AIProvider = "anthropic" | "openai" | "litellm";
 
