@@ -174,7 +174,8 @@ program
         const existing = originalClaudeMd ? `\n\n${originalClaudeMd}` : "";
         fs.writeFileSync(claudeMdPath, memexSection + existing, "utf-8");
         injectedViaClauldeMd = true;
-        console.log(chalk.dim("  Context injected via CLAUDE.md — will load automatically\n"));
+        console.log(chalk.dim(`  Context injected → ${claudeMdPath}`));
+        console.log(chalk.dim("  Claude reads this on startup — it will acknowledge the context when it starts\n"));
       } else {
         console.log(chalk.dim(`  Context written to: ${resumeFilePath}\n`));
       }

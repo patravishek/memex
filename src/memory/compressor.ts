@@ -135,11 +135,15 @@ export function buildResumePrompt(memory: ProjectMemory): string {
   }
 
   return [
-    "Memex context (your memory from previous sessions):",
+    "# Memex — Session Context",
+    "",
+    "> This file was written by Memex before this session started.",
+    "> **When you start, read this fully, then immediately say:**",
+    "> _\"Continuing from our last session — [one sentence on where we left off]. Here's what I have in memory: [brief summary]. What would you like to work on?\"_",
+    "",
+    "---",
     "",
     sections.join("\n\n"),
-    "",
-    "Please acknowledge this briefly and ask how to continue.",
   ].join("\n");
 }
 
