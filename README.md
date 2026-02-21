@@ -13,7 +13,7 @@ Memex fixes this. It wraps your AI agent session, records the conversation, and 
 ```
 memex start claude
       ↓
-PTY wrapper intercepts all I/O
+macOS `script` command records all terminal I/O
       ↓
 Session logged to .memex/sessions/
       ↓
@@ -26,12 +26,15 @@ Memory injected as first message → agent has full context
 
 Memory is **project-scoped** — tied to the directory you run Memex from. Each project has its own independent memory file.
 
+Session recording uses the macOS built-in `script` command — no native dependencies or compilation required.
+
 ---
 
 ## Install
 
 ### Prerequisites
 
+- macOS (uses the built-in `script` command for session recording)
 - Node.js 18+
 - An API key from Anthropic, OpenAI, or a LiteLLM enterprise proxy
 - Any AI terminal agent (e.g. [Claude CLI](https://docs.anthropic.com/en/docs/claude-code))
@@ -270,6 +273,24 @@ Memex wraps any terminal-based AI agent:
 | Aider | `memex start aider` |
 | Shell-GPT | `memex start sgpt` |
 | Any custom agent | `memex start your-agent` |
+
+---
+
+## Notes
+
+### Claude CLI users
+
+If you use Claude CLI logged in via claude.ai (rather than an API key), you may see an auth conflict warning if `ANTHROPIC_API_KEY` is set in your shell environment. Memex automatically strips its own API keys from the environment it passes to the wrapped agent, so this warning should not appear. If it does, run:
+
+```bash
+claude /logout
+```
+
+Then log back in via claude.ai. Memex uses its own `.env` file for compression — your Claude CLI session is not affected.
+
+### `.env` file location
+
+Memex looks for its `.env` file in the directory where it is installed (the cloned repo), not in your project directory. Your project's own `.env` files are never read or modified by Memex.
 
 ---
 
