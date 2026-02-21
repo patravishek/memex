@@ -33,8 +33,7 @@ Memory is **project-scoped** — tied to the directory you run Memex from. Each 
 ### Via Homebrew (recommended)
 
 ```bash
-brew tap patravishek/memex
-brew install memex
+brew install patravishek/memex/memex
 ```
 
 ### Via npm / manual
@@ -73,8 +72,7 @@ memex resume claude
 ### Homebrew (recommended)
 
 ```bash
-brew tap patravishek/memex
-brew install memex
+brew install patravishek/memex/memex
 ```
 
 Homebrew handles Node.js and all dependencies automatically. To update later:
