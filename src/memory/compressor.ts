@@ -146,9 +146,32 @@ export function buildResumePrompt(memory: ProjectMemory): string {
 /**
  * Write resume context to a markdown file so it can be read cleanly
  * without being piped through stdin (which causes formatting issues).
+ * Includes the recent conversation history if available, simulating
+ * Claude's --resume behaviour without relying on server-side sessions.
  */
 export function writeResumeFile(memory: ProjectMemory, filePath: string): void {
   const fs = require("fs") as typeof import("fs");
-  const content = buildResumePrompt(memory);
-  fs.writeFileSync(filePath, content, "utf-8");
+  const lines: string[] = [buildResumePrompt(memory)];
+
+  if (memory.lastConversation && memory.lastConversation.length > 0) {
+    lines.push("");
+    lines.push("---");
+    lines.push("");
+    lines.push(
+      `Recent conversation history (last ${memory.lastConversation.length} turns from previous session):`
+    );
+    lines.push("");
+    lines.push(
+      "Use this to understand exactly where we left off, as if the session never ended."
+    );
+    lines.push("");
+
+    for (const turn of memory.lastConversation) {
+      const label = turn.role === "user" ? "Human" : "Assistant";
+      lines.push(`**${label}:** ${turn.content}`);
+      lines.push("");
+    }
+  }
+
+  fs.writeFileSync(filePath, lines.join("\n"), "utf-8");
 }

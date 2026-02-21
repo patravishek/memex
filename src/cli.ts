@@ -4,7 +4,7 @@ import chalk from "chalk";
 import ora from "ora";
 import * as path from "path";
 import * as fs from "fs";
-import { SessionLogger } from "./core/session-logger.js";
+import { SessionLogger, ConversationTurn } from "./core/session-logger.js";
 import { wrapProcess } from "./core/pty-wrapper.js";
 import { compressSession, buildResumePrompt, writeResumeFile } from "./memory/compressor.js";
 import {
@@ -91,13 +91,22 @@ program
         cwd: projectPath,
       });
 
-      await runCompression(result.transcript, projectPath, result.logPath);
+      await runCompression(
+        result.transcript,
+        projectPath,
+        result.logPath,
+        logger.getConversationTurns()
+      );
     } catch (err) {
       const errMsg = (err as Error).message;
-      // Compress even on error exit if we have transcript
       const transcript = logger.getTranscript();
       if (transcript && logger.getEntryCount() > 3) {
-        await runCompression(transcript, projectPath, logger.getLogPath());
+        await runCompression(
+          transcript,
+          projectPath,
+          logger.getLogPath(),
+          logger.getConversationTurns()
+        );
       } else {
         console.error(chalk.red(`\n  Session ended: ${errMsg}`));
       }
@@ -162,14 +171,23 @@ program
         injectDelayMs: 3000,
       });
 
-      await runCompression(result.transcript, projectPath, result.logPath);
+      await runCompression(
+        result.transcript,
+        projectPath,
+        result.logPath,
+        logger.getConversationTurns()
+      );
     } catch (err) {
       const transcript = logger.getTranscript();
       if (transcript && logger.getEntryCount() > 3) {
-        await runCompression(transcript, projectPath, logger.getLogPath());
+        await runCompression(
+          transcript,
+          projectPath,
+          logger.getLogPath(),
+          logger.getConversationTurns()
+        );
       }
     } finally {
-      // Clean up resume file after session ends
       if (fs.existsSync(resumeFilePath)) fs.unlinkSync(resumeFilePath);
     }
   });
@@ -285,7 +303,8 @@ program
 async function runCompression(
   transcript: string,
   projectPath: string,
-  logPath: string
+  logPath: string,
+  conversationTurns: ConversationTurn[] = []
 ): Promise<void> {
   if (!transcript || transcript.trim().length < 50) {
     console.log(chalk.dim("\n  Session too short to compress.\n"));
@@ -295,13 +314,23 @@ async function runCompression(
   const spinner = ora("  Compressing session into memory...").start();
   try {
     const updated = await compressSession(transcript, projectPath, logPath);
+
+    // Save last N conversation turns so resume can replay them
+    // without depending on Claude's server-side session storage
+    if (conversationTurns.length > 0) {
+      const MAX_TURNS = 30;
+      updated.lastConversation = conversationTurns.slice(-MAX_TURNS);
+      saveMemory(projectPath, updated);
+    }
+
     spinner.succeed(
       chalk.green("  Memory updated") +
         chalk.dim(` — focus: ${updated.currentFocus || "not set"}`)
     );
     console.log(
       chalk.dim(`  Pending tasks: ${updated.pendingTasks.length}`) +
-        chalk.dim(`, gotchas: ${updated.gotchas.length}\n`)
+        chalk.dim(`, gotchas: ${updated.gotchas.length}`) +
+        chalk.dim(`, conversation turns saved: ${updated.lastConversation?.length ?? 0}\n`)
     );
   } catch (err) {
     const reason = (err as Error).message;

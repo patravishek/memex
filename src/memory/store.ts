@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { ConversationTurn } from "../core/session-logger.js";
 
 export interface KeyDecision {
   decision: string;
@@ -30,6 +31,12 @@ export interface ProjectMemory {
   /** Things that went wrong or surprised us — prevents repeating mistakes */
   gotchas: string[];
   recentSessions: RecentSession[];
+  /**
+   * Last N conversation turns from the most recent session.
+   * Used to simulate Claude's --resume without relying on server-side
+   * session storage that expires. Never expires, works across machines.
+   */
+  lastConversation: ConversationTurn[];
   lastUpdated: string;
 }
 
@@ -79,6 +86,7 @@ export function initMemory(projectPath: string): ProjectMemory {
     importantFiles: [],
     gotchas: [],
     recentSessions: [],
+    lastConversation: [],
     lastUpdated: new Date().toISOString(),
   };
 

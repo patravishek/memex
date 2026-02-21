@@ -10,6 +10,12 @@ export interface LogEntry {
   text: string;
 }
 
+export interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+  ts: number;
+}
+
 export class SessionLogger {
   private logPath: string;
   private buffer: LogEntry[] = [];
@@ -66,6 +72,30 @@ export class SessionLogger {
     return this.buffer
       .map((e) => `[${e.source.toUpperCase()}]: ${e.text}`)
       .join("\n");
+  }
+
+  /**
+   * Collapse sequential entries from the same source into conversation turns.
+   * This simulates the message structure of the original session so it can be
+   * re-injected as context on resume — replicating Claude's --resume behaviour
+   * without depending on Anthropic's server-side session storage.
+   */
+  getConversationTurns(): ConversationTurn[] {
+    const turns: ConversationTurn[] = [];
+
+    for (const entry of this.buffer) {
+      const role = entry.source === "user" ? "user" : "assistant";
+      const last = turns[turns.length - 1];
+
+      if (last && last.role === role) {
+        // Merge consecutive messages from the same role into one turn
+        last.content += "\n" + entry.text;
+      } else {
+        turns.push({ role, content: entry.text, ts: entry.ts });
+      }
+    }
+
+    return turns;
   }
 
   getLogPath(): string {
