@@ -70,47 +70,85 @@ Return ONLY the JSON, no markdown, no explanation.`,
   );
 
   try {
-    const updated = JSON.parse(response) as ProjectMemory;
+    // Strip markdown code fences if the AI wrapped the JSON in them
+    const cleaned = response
+      .trim()
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
+
+    const updated = JSON.parse(cleaned) as ProjectMemory;
     saveMemory(projectPath, updated);
     return updated;
-  } catch {
-    // If AI response fails to parse, at least save a basic session entry
+  } catch (parseErr) {
+    const reason = response.trim().length === 0
+      ? "AI returned an empty response — is your API key set correctly?"
+      : `Could not parse AI response as JSON: ${(parseErr as Error).message}`;
+
     existing.recentSessions.push({
       date: new Date().toISOString(),
-      summary: "Session recorded but compression failed — raw log preserved.",
+      summary: `Session recorded but compression failed — ${reason}`,
       logFile,
     });
     if (existing.recentSessions.length > 5) {
       existing.recentSessions = existing.recentSessions.slice(-5);
     }
     saveMemory(projectPath, existing);
-    return existing;
+
+    // Re-throw so the CLI can surface the real reason to the user
+    throw new Error(reason);
   }
 }
 
 export function buildResumePrompt(memory: ProjectMemory): string {
-  return `[MEMEX CONTEXT - DO NOT REPEAT THIS BACK]
-You have previously worked on this project. Here is your memory:
+  const lastSession = memory.recentSessions.at(-1);
+  const lastDate = lastSession
+    ? new Date(lastSession.date).toLocaleString()
+    : "unknown";
 
-Project: ${memory.projectName}
-Description: ${memory.description || "Not yet recorded"}
-Stack: ${memory.stack.join(", ") || "Not yet recorded"}
-Current focus: ${memory.currentFocus || "Not specified"}
+  const sections: string[] = [
+    `Project: ${memory.projectName}`,
+  ];
 
-Pending tasks:
-${memory.pendingTasks.map((t) => `- ${t}`).join("\n") || "None recorded"}
+  if (memory.description) sections.push(`Description: ${memory.description}`);
+  if (memory.stack.length) sections.push(`Stack: ${memory.stack.join(", ")}`);
+  if (memory.currentFocus) sections.push(`Current focus: ${memory.currentFocus}`);
 
-Key decisions:
-${memory.keyDecisions.map((d) => `- ${d.decision} (${d.reason})`).join("\n") || "None recorded"}
+  if (memory.pendingTasks.length) {
+    sections.push(`Pending tasks:\n${memory.pendingTasks.map((t) => `- ${t}`).join("\n")}`);
+  }
 
-Gotchas to avoid:
-${memory.gotchas.map((g) => `- ${g}`).join("\n") || "None recorded"}
+  if (memory.keyDecisions.length) {
+    sections.push(`Key decisions:\n${memory.keyDecisions.map((d) => `- ${d.decision} (${d.reason})`).join("\n")}`);
+  }
 
-Important files:
-${memory.importantFiles.map((f) => `- ${f.filePath}: ${f.purpose}`).join("\n") || "None recorded"}
+  if (memory.gotchas.length) {
+    sections.push(`Gotchas to avoid:\n${memory.gotchas.map((g) => `- ${g}`).join("\n")}`);
+  }
 
-Last session (${memory.recentSessions.at(-1)?.date ?? "unknown"}):
-${memory.recentSessions.at(-1)?.summary ?? "No previous session"}
+  if (memory.importantFiles.length) {
+    sections.push(`Important files:\n${memory.importantFiles.map((f) => `- ${f.filePath}: ${f.purpose}`).join("\n")}`);
+  }
 
-Please acknowledge this context briefly and ask how to continue.`;
+  if (lastSession) {
+    sections.push(`Last session (${lastDate}):\n${lastSession.summary}`);
+  }
+
+  return [
+    "Memex context (your memory from previous sessions):",
+    "",
+    sections.join("\n\n"),
+    "",
+    "Please acknowledge this briefly and ask how to continue.",
+  ].join("\n");
+}
+
+/**
+ * Write resume context to a markdown file so it can be read cleanly
+ * without being piped through stdin (which causes formatting issues).
+ */
+export function writeResumeFile(memory: ProjectMemory, filePath: string): void {
+  const fs = require("fs") as typeof import("fs");
+  const content = buildResumePrompt(memory);
+  fs.writeFileSync(filePath, content, "utf-8");
 }

@@ -6,7 +6,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { SessionLogger } from "./core/session-logger.js";
 import { wrapProcess } from "./core/pty-wrapper.js";
-import { compressSession, buildResumePrompt } from "./memory/compressor.js";
+import { compressSession, buildResumePrompt, writeResumeFile } from "./memory/compressor.js";
 import {
   loadMemory,
   saveMemory,
@@ -138,7 +138,15 @@ program
       console.log();
     }
 
-    const resumePrompt = memory ? buildResumePrompt(memory) : "";
+    // Write context to a file — cleaner than piping through stdin which
+    // causes broken character spacing in the terminal
+    const resumeFilePath = path.join(memexDir, "RESUME.md");
+    if (memory) {
+      writeResumeFile(memory, resumeFilePath);
+      console.log(chalk.dim(`  Context written to: ${resumeFilePath}`));
+      console.log(chalk.dim(`  Claude will read this automatically if it finds RESUME.md\n`));
+    }
+
     const logger = new SessionLogger(memexDir);
     const args = options.args ? options.args.split(" ").filter(Boolean) : [];
 
@@ -147,7 +155,10 @@ program
         command,
         args,
         cwd: projectPath,
-        injectOnReady: resumePrompt || undefined,
+        // Inject a short one-liner pointing to the file instead of the full blob
+        injectOnReady: memory
+          ? `Please read the file ${resumeFilePath} to restore context from our previous sessions, then ask how to continue.`
+          : undefined,
         injectDelayMs: 3000,
       });
 
@@ -157,6 +168,9 @@ program
       if (transcript && logger.getEntryCount() > 3) {
         await runCompression(transcript, projectPath, logger.getLogPath());
       }
+    } finally {
+      // Clean up resume file after session ends
+      if (fs.existsSync(resumeFilePath)) fs.unlinkSync(resumeFilePath);
     }
   });
 
@@ -290,10 +304,14 @@ async function runCompression(
         chalk.dim(`, gotchas: ${updated.gotchas.length}\n`)
     );
   } catch (err) {
-    spinner.fail(
-      chalk.red("  Compression failed — raw session log preserved")
-    );
-    console.error(chalk.dim(`  ${(err as Error).message}\n`));
+    const reason = (err as Error).message;
+    spinner.fail(chalk.red("  Compression failed — raw session log preserved"));
+    console.error(chalk.yellow(`\n  Reason: ${reason}`));
+    if (reason.includes("API key")) {
+      console.error(chalk.dim("  Fix: add your key to ~/.zshrc and run: source ~/.zshrc\n"));
+    } else {
+      console.error(chalk.dim(`  Raw log saved to: ${logPath}\n`));
+    }
   }
 }
 
