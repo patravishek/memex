@@ -1,4 +1,5 @@
 import * as pty from "node-pty";
+import * as child_process from "child_process";
 import { SessionLogger } from "./session-logger.js";
 
 export interface WrapOptions {
@@ -18,6 +19,24 @@ export interface WrapResult {
   logPath: string;
 }
 
+function resolveCommandPath(command: string): string {
+  // Spawn through `which` to resolve the full path from the user's shell PATH.
+  // This handles nvm-managed binaries, homebrew installs, etc.
+  try {
+    const shell = process.env.SHELL ?? "/bin/zsh";
+    const result = child_process.spawnSync(
+      shell,
+      ["-i", "-c", `which ${command}`],
+      { encoding: "utf-8" }
+    );
+    const resolved = result.stdout?.trim();
+    if (resolved && resolved.length > 0) return resolved;
+  } catch {
+    // fall through to using command as-is
+  }
+  return command;
+}
+
 export async function wrapProcess(
   logger: SessionLogger,
   options: WrapOptions
@@ -27,13 +46,27 @@ export async function wrapProcess(
     const cols = process.stdout.columns ?? 120;
     const rows = process.stdout.rows ?? 30;
 
-    const ptyProcess = pty.spawn(options.command, options.args ?? [], {
-      name: "xterm-color",
-      cols,
-      rows,
-      cwd: options.cwd ?? process.cwd(),
-      env: process.env as Record<string, string>,
-    });
+    // Resolve the full binary path so node-pty can find it without a login shell
+    const resolvedCommand = resolveCommandPath(options.command);
+
+    let ptyProcess: pty.IPty;
+    try {
+      ptyProcess = pty.spawn(resolvedCommand, options.args ?? [], {
+        name: "xterm-color",
+        cols,
+        rows,
+        cwd: options.cwd ?? process.cwd(),
+        env: process.env as Record<string, string>,
+      });
+    } catch (spawnErr) {
+      reject(
+        new Error(
+          `Could not start "${options.command}". Is it installed and in your PATH?\n` +
+            `Run: which ${options.command}`
+        )
+      );
+      return;
+    }
 
     // Resize PTY when terminal resizes
     process.stdout.on("resize", () => {
@@ -83,12 +116,6 @@ export async function wrapProcess(
         transcript: logger.getTranscript(),
         logPath: logger.getLogPath(),
       });
-    });
-
-    ptyProcess.onExit(({ exitCode: code }) => {
-      if (code !== 0) {
-        reject(new Error(`Process exited with code ${code}`));
-      }
     });
   });
 }
