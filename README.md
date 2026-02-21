@@ -1,10 +1,93 @@
 # Memex
 
-> Persistent memory for any AI terminal agent.
+> Your AI coding agent now remembers everything — across every session, every day.
 
-When you close a terminal session with Claude, GPT, or any AI coding agent — all context is lost. The next session starts from zero. You end up re-explaining the project, re-establishing decisions, re-describing what you were working on.
+```
+    Day 1                              Day 2
+      │                                  │
+  memex start claude               memex resume claude
+      │                                  │
+  "Build me a checkout flow"        "Continue from where we left off"
+      │                                  │
+  Claude works...                   Claude: "Yesterday we finished the
+      │                              cart logic. Still need to wire up
+  You close the terminal            Stripe webhooks. Want me to start?"
+      │                                  │
+  [Memex saves everything]          Back in flow in 10 seconds.
+```
 
-Memex fixes this. It wraps your AI agent session, records the conversation, and uses AI to compress it into a structured memory file. The next time you start a session, Memex automatically injects that context so your agent picks up exactly where it left off.
+No more re-explaining your project. No more lost momentum. Memex works silently in the background — you just open and close Claude like normal.
+
+---
+
+## Install
+
+```bash
+# Via npm (recommended)
+npm install -g @patravishek/memex
+
+# Via Homebrew
+brew install patravishek/memex/memex
+```
+
+Then add your API key to `~/.zshrc`:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+```bash
+source ~/.zshrc
+```
+
+That's the entire setup.
+
+---
+
+## The two commands you need
+
+```bash
+memex start claude      # Day 1 — or any time you start fresh on a project
+memex resume claude     # Every session after — Claude picks up where it left off
+```
+
+That's it. Everything else is automatic.
+
+---
+
+## What it actually feels like
+
+**Day 1 — Starting a new project:**
+
+```bash
+cd ~/my-project
+memex start claude
+```
+
+You work with Claude for a couple of hours. Build some features, make decisions, hit a few problems. When you're done, you close the terminal. Memex quietly saves everything in the background.
+
+**Day 2 — Coming back:**
+
+```bash
+cd ~/my-project
+memex resume claude
+```
+
+Claude responds:
+
+```
+Continuing from our last session — we were building the checkout flow.
+
+Here's what I have in memory:
+• Project: my-app (Next.js + Stripe + PostgreSQL)
+• Last session: Finished cart persistence, fixed guest cart bug
+• Still pending: Wire up Stripe webhooks, add payment failure handling
+• Watch out: Stripe webhook events can arrive out of order under load
+
+What would you like to work on?
+```
+
+Claude is your **personal engineering assistant** — it remembers your project, your decisions, your mistakes, and exactly where you left off.
 
 ---
 
@@ -13,22 +96,20 @@ Memex fixes this. It wraps your AI agent session, records the conversation, and 
 ```
 memex start claude
       ↓
-macOS `script` command records all terminal I/O
+Session recorded locally (.memex/sessions/)
       ↓
-Session logged to .memex/sessions/
-      ↓
-On exit: AI compresses transcript → .memex/memex.db (SQLite)
+You exit → AI compresses transcript → .memex/memex.db
       ↓
 memex resume claude
       ↓
-Short CLAUDE.md hint written + .mcp.json generated
+Claude gets a short context hint + MCP tools connected
       ↓
-Claude starts, auto-connects to `memex serve` (stdio subprocess)
+Claude calls get_context(), get_gotchas()... on demand
       ↓
-Claude calls get_context(), get_gotchas(), save_observation()... on demand
+No wasted tokens. No performance warnings. Just context.
 ```
 
-Memory is **project-scoped** — tied to the directory you run Memex from. Each project has its own independent SQLite database at `.memex/memex.db`. Session recording uses the macOS built-in `script` command — no native dependencies or compilation required.
+Memory is **project-scoped** — each project has its own independent database at `.memex/memex.db`. Nothing is shared between projects unless you choose to.
 
 ---
 
@@ -39,23 +120,23 @@ Memory is **project-scoped** — tied to the directory you run Memex from. Each 
 - macOS
 - Node.js 18+
 - An API key from Anthropic, OpenAI, or a LiteLLM enterprise proxy
-- Any AI terminal agent (e.g. [Claude CLI](https://docs.anthropic.com/en/docs/claude-code))
+- Claude CLI — [install here](https://docs.anthropic.com/en/docs/claude-code)
 
-### Via Homebrew (recommended)
+### Via npm (recommended)
+
+```bash
+npm install -g @patravishek/memex
+```
+
+Available on npm at [`@patravishek/memex`](https://www.npmjs.com/package/@patravishek/memex).
+
+### Via Homebrew
 
 ```bash
 brew install patravishek/memex/memex
 ```
 
-The `patravishek/memex/memex` format is Homebrew's shorthand for a third-party tap — it registers the tap and installs the formula in a single command, no separate `brew tap` step needed.
-
-To upgrade later:
-
-```bash
-brew upgrade memex
-```
-
-### Via npm / manual
+### From source
 
 ```bash
 git clone https://github.com/patravishek/memex.git
@@ -63,13 +144,11 @@ cd memex
 npm install && npm run build && npm link
 ```
 
-`npm link` makes the `memex` command available globally from any directory.
-
 ---
 
 ## Configuration
 
-Memex reads API keys from your **shell environment** — no config file required. Add your key to `~/.zshrc` (or `~/.bashrc`) and reload:
+Memex reads API keys from your **shell environment** — no config file required. Add to `~/.zshrc` and reload:
 
 ```bash
 source ~/.zshrc
@@ -91,101 +170,58 @@ export OPENAI_MODEL=gpt-4o-mini   # optional
 
 ### LiteLLM (enterprise proxy)
 
-Many enterprises route AI traffic through a [LiteLLM](https://docs.litellm.ai) proxy to centralise key management, cost tracking, and model governance. Memex supports this natively.
+Many enterprises route AI traffic through a [LiteLLM](https://docs.litellm.ai) proxy for centralised key management, cost tracking, and model governance. Memex supports this natively — your session data never leaves the corporate network.
 
 ```bash
 export LITELLM_API_KEY=your_litellm_key
 export LITELLM_BASE_URL=https://litellm.your-company.com
-export LITELLM_MODEL=claude-3-haiku    # must match your proxy's model name
-export LITELLM_TEAM_ID=your_team_id   # optional — for team-based routing
+export LITELLM_MODEL=claude-3-haiku
+export LITELLM_TEAM_ID=your_team_id   # optional
 ```
 
-Memex uses the OpenAI SDK pointed at your LiteLLM proxy URL, so it works with **any model your enterprise has configured** — Claude, GPT-4, Mistral, Llama, and more. The `LITELLM_MODEL` value must match exactly what your proxy exposes (check with your LiteLLM admin).
+### Provider auto-detection
 
-### Provider auto-detection order
+Memex picks the provider automatically based on what's set:
 
-Memex auto-detects the provider from whichever keys are present in the environment:
-
-1. **LiteLLM** — if both `LITELLM_API_KEY` and `LITELLM_BASE_URL` are set
+1. **LiteLLM** — if `LITELLM_API_KEY` + `LITELLM_BASE_URL` are both set
 2. **Anthropic** — if `ANTHROPIC_API_KEY` is set
 3. **OpenAI** — if `OPENAI_API_KEY` is set
 
-Override explicitly with `export AI_PROVIDER=anthropic|openai|litellm` if needed.
-
-### Optional: `.env` file
-
-If you prefer not to set shell variables globally, Memex also accepts a `.env` file inside the cloned repo directory. Shell environment variables always take precedence over `.env`.
-
-```bash
-cp .env.example .env
-# edit .env with your keys
-```
-
 ---
 
-## Quickstart
-
-```bash
-# Install
-brew install patravishek/memex/memex
-
-# Add your API key to ~/.zshrc
-echo 'export ANTHROPIC_API_KEY=sk-ant-...' >> ~/.zshrc && source ~/.zshrc
-
-# Go to any project and start a tracked session
-cd ~/your-project
-memex start claude
-
-# Next day — resume with full context restored
-memex resume claude
-```
-
----
-
-## Usage
+## All commands
 
 ### `memex start [command]`
 
-Start a tracked session. Memex wraps your agent, records all I/O, and compresses it into memory when you exit.
+Start a tracked session on a project for the first time.
 
 ```bash
-# Wrap Claude CLI (default)
 memex start claude
-
-# Wrap any other agent
 memex start aider
-memex start sgpt
-
-# Run against a specific project directory
 memex start claude --project /path/to/project
 ```
 
-On exit, you'll see:
+When you exit, you'll see:
 
 ```
 ✔ Memory updated — focus: Implementing the checkout flow
-  Pending tasks: 3, gotchas: 1
+  Pending tasks: 3, gotchas: 1, conversation turns saved: 24
 ```
 
 ---
 
 ### `memex resume [command]`
 
-Resume with full context automatically restored. By default Memex uses **MCP mode** for Claude: a short hint is written to `CLAUDE.md` (~500 chars, no performance warning) and `.mcp.json` is generated so Claude auto-connects to `memex serve` as a subprocess on startup.
+Resume with full context restored. Claude connects to Memex memory tools automatically on startup.
 
 ```bash
 memex resume claude
 ```
 
-Claude gets a brief "where we left off" summary immediately, then calls MCP tools on demand:
-
-- `get_context()` — project summary, stack, focus
-- `get_gotchas()` — pitfalls to avoid before touching sensitive code
-- `search_sessions("auth bug")` — search past session history
-- `save_observation("gotcha", "...")` — save discoveries mid-session
+Claude gets a brief summary of where things stand, then queries memory on demand — no 35k char dump, no performance warnings.
 
 ```bash
-# Fall back to full CLAUDE.md context dump (v0.1 behaviour)
+# Fall back to full context dump if needed
 memex resume claude --no-mcp
 ```
 
@@ -199,55 +235,43 @@ See what Memex currently knows about your project.
 memex status
 ```
 
-Example output:
-
 ```
   memex — project memory
 
   Project: my-app
   What this project does:
-  E-commerce platform built with Next.js and Stripe...
+  E-commerce platform with Next.js and Stripe
 
   Tech stack: Next.js, TypeScript, Prisma, PostgreSQL
-
   Current focus: Implementing the checkout flow
 
   Pending tasks:
-    - Add payment failure test cases
-    - Fix flaky login selector on Safari
+    - Wire up Stripe webhooks
+    - Add payment failure handling
 
   Gotchas:
-    - chalk v5 is ESM-only, use v4 in CommonJS projects
+    - Stripe webhook events can arrive out of order under load
 
   Sessions recorded: 4
-  Database: /your-project/.memex/memex.db
+  Database: /my-app/.memex/memex.db
 ```
 
 ---
 
 ### `memex history`
 
-List all past sessions for the current project with dates, durations, and summaries.
+List past sessions with dates, durations, and one-line summaries.
 
 ```bash
 memex history
-
-# Show more results
 memex history -n 50
-
-# Show sessions across all projects
-memex history --all
 ```
 
-Example output:
-
 ```
-  memex — session history
+  #12  Feb 18, 2026  [claude]  42m
+       Finished cart persistence, fixed guest cart bug on page refresh.
 
-  #12  Feb 18, 2026, 10:30 AM  [claude]  42m 18s
-       Implemented cart persistence, fixed guest cart bug on page refresh.
-
-  #11  Feb 17, 2026, 3:12 PM   [claude]  1h 5m
+  #11  Feb 17, 2026  [claude]  1h 5m
        Set up Stripe webhook handler and wrote integration tests.
 ```
 
@@ -255,7 +279,7 @@ Example output:
 
 ### `memex show <id>`
 
-View full details of any past session, including every recorded conversation turn.
+View the full transcript and summary of any past session.
 
 ```bash
 memex show 12
@@ -265,92 +289,34 @@ memex show 12
 
 ### `memex search <query>`
 
-Full-text search across all session summaries. Fast — backed by SQLite FTS5.
+Full-text search across all past session summaries.
 
 ```bash
 memex search "stripe webhook"
 memex search "authentication bug"
-
-# Search across all projects
-memex search "prisma migration" --all
-```
-
-Example output:
-
-```
-  memex — search: "stripe webhook"
-
-  #11  Feb 17, 2026  [claude]
-       Set up [stripe webhook] handler and wrote integration tests for...
 ```
 
 ---
-
-### `memex serve`
-
-Start the Memex MCP server in stdio mode. Claude Code and other MCP-compatible agents launch this automatically as a subprocess — you rarely need to run it manually.
-
-```bash
-memex serve
-memex serve --project /path/to/project
-```
 
 ### `memex setup-mcp`
 
-Generate a `.mcp.json` file in the current project so Claude always has Memex tools available, even without `memex resume`. Commit the file to share with your team.
+Make Memex memory tools permanently available in Claude without using `memex resume`.
 
 ```bash
-# Write .mcp.json in the current project directory
+# For this project only (commit to share with teammates)
 memex setup-mcp
 
-# Write to ~/.claude/mcp.json — applies to every Claude session globally
+# For every Claude session on your machine
 memex setup-mcp --global
 ```
 
-This generates:
-
-```json
-{
-  "mcpServers": {
-    "memex": {
-      "command": "memex",
-      "args": ["serve", "--project", "/abs/path/to/project"]
-    }
-  }
-}
-```
-
-### `memex prune [days]`
-
-Delete session records older than N days (default: 30). Raw JSONL log files in `.memex/sessions/` are not touched — remove those separately if needed.
-
-```bash
-# Remove sessions older than 30 days (default)
-memex prune
-
-# Remove sessions older than 7 days
-memex prune 7
-```
-
----
-
-### `memex forget`
-
-Clear all memory for the current project and start fresh.
-
-```bash
-# Clear memory fields but keep session history
-memex forget --keep-sessions
-
-# Clear everything
-memex forget
-```
+After this, just run `claude` normally and say "resume from where we left off" — Claude will find the memory automatically.
 
 ---
 
 ### `memex compress`
 
-Manually re-run compression on the latest session log. Useful if compression failed at the end of a session or you want to force a memory refresh.
+Manually re-run compression on the latest session. Useful if the session ended unexpectedly.
 
 ```bash
 memex compress
@@ -358,49 +324,63 @@ memex compress
 
 ---
 
+### `memex prune [days]`
+
+Delete session records older than N days (default: 30).
+
+```bash
+memex prune        # removes sessions older than 30 days
+memex prune 7      # removes sessions older than 7 days
+```
+
+---
+
+### `memex forget`
+
+Clear all memory for the current project.
+
+```bash
+memex forget                  # clear everything
+memex forget --keep-sessions  # clear memory fields, keep session history
+```
+
+---
+
+## MCP tools (available inside Claude sessions)
+
+When Claude connects via MCP, it can call these tools on demand:
+
+| Tool | What it does |
+|---|---|
+| `get_context()` | Project summary, stack, current focus |
+| `get_tasks()` | Pending tasks |
+| `get_decisions()` | Key architectural decisions with reasons |
+| `get_gotchas()` | Pitfalls to avoid |
+| `get_important_files()` | Files worth knowing about |
+| `get_recent_conversation()` | Last N turns from previous session |
+| `search_sessions("query")` | Search past session history |
+| `get_session(id)` | Full detail of a specific session |
+| `save_observation(type, content)` | Save a note, task, decision, or gotcha mid-session |
+
+`save_observation` is particularly useful — Claude can save important discoveries immediately without waiting for end-of-session compression.
+
+---
+
 ## Project structure
 
 ```
-.memex/                           # Created in your project root
-├── memex.db                      # SQLite database (memory + full session history)
-├── memory.json.bak               # Auto-created if upgrading from v0.1 (safe to delete)
+.memex/
+├── memex.db          # SQLite database — memory + full session history
 └── sessions/
-    ├── 2026-02-18T10-00.jsonl    # Structured session log (raw I/O entries)
-    └── 2026-02-18T10-00-raw.txt  # Raw terminal recording (from `script` command)
+    ├── *.jsonl       # Structured session logs
+    └── *-raw.txt     # Raw terminal recordings
 ```
 
-Add this to your project's `.gitignore` to keep raw session logs out of version control:
+Add to `.gitignore` to keep raw logs out of version control:
 
 ```
 .memex/sessions/
 ```
-
-The `memex.db` file is small (typically a few KB per session). You can commit it so your whole team shares the same project memory — useful for onboarding or handoffs. Use `memex history` to inspect it without opening a SQL client.
-
----
-
-## What gets captured
-
-| Field | Description |
-|---|---|
-| `description` | What the project does |
-| `stack` | Tech stack detected from conversation |
-| `currentFocus` | What was being worked on |
-| `pendingTasks` | Tasks mentioned but not completed |
-| `keyDecisions` | Architectural and design decisions made |
-| `importantFiles` | Files referenced during the session |
-| `gotchas` | Problems hit, mistakes made, things to avoid |
-| `recentSessions` | Summaries of the last 5 sessions |
-
----
-
-## Supported providers
-
-| Provider | Key variable | Default model |
-|---|---|---|
-| Anthropic | `ANTHROPIC_API_KEY` | `claude-3-haiku-20240307` |
-| OpenAI | `OPENAI_API_KEY` | `gpt-4o-mini` |
-| LiteLLM | `LITELLM_API_KEY` + `LITELLM_BASE_URL` | Set via `LITELLM_MODEL` |
 
 ---
 
@@ -411,25 +391,23 @@ The `memex.db` file is small (typically a few KB per session). You can commit it
 | Claude CLI | `memex start claude` |
 | Aider | `memex start aider` |
 | Shell-GPT | `memex start sgpt` |
-| Any custom agent | `memex start your-agent` |
+| Any CLI agent | `memex start your-agent` |
 
 ---
 
 ## Notes
 
-### Claude CLI users
+**Claude CLI users:** Memex automatically strips its own API keys from the environment before launching Claude, preventing the `Auth conflict: Both a token and an API key are set` warning.
 
-Memex automatically strips its own API keys from the environment before passing it to the wrapped agent. This prevents the auth conflict warning that Claude CLI shows when `ANTHROPIC_API_KEY` is set in the environment but you are logged in via claude.ai.
+**Your data stays local:** The only external call Memex makes is a single AI API call at the end of each session to compress the transcript. All memory, session logs, and MCP tool responses are purely local — no Memex server, no cloud, no account.
 
-### Key isolation
-
-Your project's own `.env` files are never read or modified by Memex. Memex only reads from your shell environment and its own optional `.env` inside the repo directory.
+**Enterprise:** If your company uses LiteLLM, the compression call goes through your corporate proxy. The MCP tools make zero network calls — they read local SQLite.
 
 ---
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for planned features across upcoming versions — including MCP server support, a local web UI, semantic vector search, and more.
+See [ROADMAP.md](ROADMAP.md) for planned features — including a local web UI, semantic vector search, and more.
 
 Contributions welcome. If a feature matters to you, open an issue.
 
