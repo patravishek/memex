@@ -57,8 +57,17 @@ export class MemoryPanel implements vscode.WebviewViewProvider {
       if (webviewView.visible) this._render();
     });
 
-    webviewView.webview.onDidReceiveMessage((msg) => {
+    webviewView.webview.onDidReceiveMessage(async (msg) => {
       if (msg.command === "refresh") this._render();
+      if (msg.command === "init") {
+        try {
+          await this.runInit();
+          vscode.window.showInformationMessage("Memex: Project initialized successfully!");
+          this._render();
+        } catch {
+          vscode.window.showErrorMessage("Memex: Failed to initialize. Is the CLI installed? Run: npm i -g @patravishek/memex");
+        }
+      }
     });
   }
 
@@ -91,12 +100,27 @@ export class MemoryPanel implements vscode.WebviewViewProvider {
       );
       return JSON.parse(stdout) as MemoryData;
     } catch (err) {
-      // memex binary not found or no memory yet
-      const msg = (err as NodeJS.ErrnoException).code === "ENOENT"
-        ? "memex not found. Install with: npm i -g @patravishek/memex"
-        : "No memory yet. Run `memex start` in your terminal.";
-      return { error: msg };
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        return { error: "not_installed" };
+      }
+      return { error: "no_memory" };
     }
+  }
+
+  public async runInit(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const { spawn } = require("child_process") as typeof import("child_process");
+      const child = spawn("memex", ["init", "--project", this._workspaceRoot], {
+        stdio: "pipe",
+        cwd: this._workspaceRoot,
+      });
+      child.on("close", (code: number) => {
+        if (code === 0) resolve();
+        else reject(new Error(`memex init exited with code ${code}`));
+      });
+      child.on("error", reject);
+    });
   }
 
   private _loadingHtml(): string {
@@ -106,6 +130,29 @@ export class MemoryPanel implements vscode.WebviewViewProvider {
   }
 
   private _buildHtml(data: MemoryData): string {
+    if (data.error === "not_installed") {
+      return this._wrapHtml(`
+        <div class="empty-state">
+          <div class="empty-icon">⬡</div>
+          <p class="empty-title">Memex CLI not found</p>
+          <p class="empty-sub">Install it to get started:</p>
+          <code>npm i -g @patravishek/memex</code>
+        </div>
+      `);
+    }
+
+    if (data.error === "no_memory") {
+      return this._wrapHtml(`
+        <div class="empty-state">
+          <div class="empty-icon">⬡</div>
+          <p class="empty-title">No memory yet</p>
+          <p class="empty-sub">Initialize Memex for this project to get started.</p>
+          <button class="init-btn" onclick="init()">Initialize Project</button>
+          <p class="empty-hint">Or run in your terminal:<br><code>memex init</code></p>
+        </div>
+      `);
+    }
+
     if (data.error) {
       return this._wrapHtml(`
         <div class="empty-state">
@@ -287,10 +334,30 @@ export class MemoryPanel implements vscode.WebviewViewProvider {
   .empty-state {
     text-align: center;
     padding: 24px 16px;
-    opacity: 0.6;
     font-size: 12px;
   }
-  .empty-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.4; }
+  .empty-icon { font-size: 28px; margin-bottom: 8px; opacity: 0.3; }
+  .empty-title { font-weight: 600; margin-bottom: 6px; opacity: 0.8; }
+  .empty-sub { opacity: 0.55; margin-bottom: 12px; }
+  .empty-hint { opacity: 0.45; margin-top: 12px; line-height: 1.6; }
+  .init-btn {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    border-radius: 3px;
+    padding: 6px 16px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: var(--vscode-font-family);
+  }
+  .init-btn:hover { background: var(--vscode-button-hoverBackground); }
+  code {
+    background: var(--vscode-textCodeBlock-background);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: 11px;
+  }
 </style>
 </head>
 <body>
@@ -298,6 +365,7 @@ ${body}
 <script>
   const vscode = acquireVsCodeApi();
   function refresh() { vscode.postMessage({ command: 'refresh' }); }
+  function init() { vscode.postMessage({ command: 'init' }); }
 </script>
 </body>
 </html>`;

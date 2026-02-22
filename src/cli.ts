@@ -32,7 +32,7 @@ import {
   SessionRow,
 } from "./storage/queries.js";
 
-const MEMEX_VERSION = "0.4.2";
+const MEMEX_VERSION = "0.4.3";
 
 // ─── ASCII logo ───────────────────────────────────────────────────────────────
 
@@ -81,6 +81,40 @@ program
       console.error(chalk.dim("  Then reload your shell: source ~/.zshrc\n"));
       process.exit(1);
     }
+  });
+
+// ─── memex init ───────────────────────────────────────────────────────────────
+program
+  .command("init")
+  .description("Initialize Memex for this project without starting an agent session")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .action((options) => {
+    const projectPath = path.resolve(options.project);
+
+    if (ensureGitignore(projectPath)) {
+      console.log(chalk.dim("  Added .memex/ and .mcp.json to .gitignore\n"));
+    }
+
+    printLogo();
+
+    if (memoryExists(projectPath)) {
+      const memory = loadMemory(projectPath)!;
+      console.log(chalk.bold("  Already initialized\n"));
+      console.log(chalk.dim(`  Project: ${projectPath}`));
+      console.log(chalk.dim(`  Last updated: ${new Date(memory.lastUpdated).toLocaleString()}`));
+      console.log(chalk.dim(`  Focus: ${memory.currentFocus || "not set"}\n`));
+      return;
+    }
+
+    initMemory(projectPath);
+
+    console.log(chalk.green("  Project initialized\n"));
+    console.log(chalk.dim(`  Project: ${projectPath}`));
+    console.log(chalk.dim(`  Database: ${path.join(getMemexDir(projectPath), "memex.db")}\n`));
+    console.log(chalk.bold("  Next steps:"));
+    console.log(chalk.dim("    memex resume claude     — start a session with full context"));
+    console.log(chalk.dim("    memex focus \"my topic\"  — set what you're working on"));
+    console.log(chalk.dim("    memex setup-mcp         — connect Cursor / Copilot via MCP\n"));
   });
 
 // ─── memex start [command] ────────────────────────────────────────────────────
