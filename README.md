@@ -494,7 +494,7 @@ git commit -m "chore: stop tracking .memex directory"
 
 ## Roadmap
 
-**Current: v0.4.1** — Progressive context injection (tiered, focus-aware, token-budgeted)
+**Current: v0.4.2** — Progressive context injection (tiered, focus-aware, token-budgeted)
 
 See [ROADMAP.md](ROADMAP.md) for what's next — including a local web UI, semantic vector search, and more.
 

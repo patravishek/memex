@@ -32,7 +32,7 @@ import {
   SessionRow,
 } from "./storage/queries.js";
 
-const MEMEX_VERSION = "0.4.1";
+const MEMEX_VERSION = "0.4.2";
 
 // ─── ASCII logo ───────────────────────────────────────────────────────────────
 
