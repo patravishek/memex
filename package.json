@@ -9,7 +9,6 @@
   "icon": "images/icon.png",
   "files": [
     "dist/",
-    "images/",
     "README.md",
     "LICENSE"
   ],
