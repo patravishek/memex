@@ -61,6 +61,13 @@ memex resume claude     # Every session after — Claude picks up where it left 
 
 That's it. Everything else is automatic.
 
+**Using Cursor, Copilot, or another IDE agent instead of the CLI?** Initialize without launching any agent:
+
+```bash
+memex init              # creates .memex/memex.db and sets up the project
+memex setup-mcp         # connects Cursor Agent / Copilot via MCP
+```
+
 ---
 
 ## What it actually feels like
@@ -205,6 +212,19 @@ Memex picks the provider automatically based on what's set:
 ---
 
 ## All commands
+
+### `memex init`
+
+Initialize Memex for a project without launching any agent. Creates `.memex/memex.db` and sets up `.gitignore`. Use this when working with IDE-based agents like Cursor or Copilot that don't need the CLI session wrapper.
+
+```bash
+cd ~/my-project
+memex init
+```
+
+After running, open the Memex sidebar in VS Code / Cursor — or run `memex setup-mcp` to connect your IDE agent via MCP.
+
+---
 
 ### `memex start [command]`
 
