@@ -1,6 +1,10 @@
-# Memex
+<p align="center">
+  <img src="images/icon.png" width="100" alt="Memex" />
+</p>
 
-> Your AI coding agent now remembers everything — across every session, every day.
+<h1 align="center">Memex</h1>
+
+<p align="center">Your AI coding agent now remembers everything — across every session, every day.</p>
 
 ```
     Day 1                              Day 2
@@ -490,7 +494,7 @@ git commit -m "chore: stop tracking .memex directory"
 
 ## Roadmap
 
-**Current: v0.4.0** — Progressive context injection (tiered, focus-aware, token-budgeted)
+**Current: v0.4.1** — Progressive context injection (tiered, focus-aware, token-budgeted)
 
 See [ROADMAP.md](ROADMAP.md) for what's next — including a local web UI, semantic vector search, and more.
 

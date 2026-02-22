@@ -32,12 +32,30 @@ import {
   SessionRow,
 } from "./storage/queries.js";
 
+const MEMEX_VERSION = "0.4.1";
+
+// ─── ASCII logo ───────────────────────────────────────────────────────────────
+
+function printLogo(): void {
+  const logo = [
+    "  ███╗   ███╗███████╗███╗   ███╗███████╗██╗  ██╗",
+    "  ████╗ ████║██╔════╝████╗ ████║██╔════╝╚██╗██╔╝",
+    "  ██╔████╔██║█████╗  ██╔████╔██║█████╗   ╚███╔╝ ",
+    "  ██║╚██╔╝██║██╔══╝  ██║╚██╔╝██║██╔══╝   ██╔██╗ ",
+    "  ██║ ╚═╝ ██║███████╗██║ ╚═╝ ██║███████╗██╔╝ ██╗",
+    "  ╚═╝     ╚═╝╚══════╝╚═╝     ╚═╝╚══════╝╚═╝  ╚═╝",
+  ];
+  console.log(chalk.magenta(logo.join("\n")));
+  console.log(chalk.dim(`  persistent memory for AI agents  ·  v${MEMEX_VERSION}`));
+  console.log();
+}
+
 const program = new Command();
 
 program
   .name("memex")
   .description("Persistent memory for any AI terminal agent")
-  .version("0.4.0")
+  .version(MEMEX_VERSION)
   .addHelpText("afterAll", "\n  npm: @patravishek/memex  |  https://github.com/patravishek/memex")
   .hook("preAction", (thisCommand) => {
     const aiCommands = ["start", "resume", "compress"];
@@ -81,7 +99,8 @@ program
       console.log(chalk.dim("  Added .memex/ and .mcp.json to .gitignore\n"));
     }
 
-    console.log(chalk.bold.magenta("\n  memex — session started\n"));
+    printLogo();
+    console.log(chalk.bold("  session started"));
     console.log(chalk.dim(`  Project: ${projectPath}`));
     console.log(chalk.dim(`  Agent:   ${command}\n`));
 
@@ -195,7 +214,8 @@ program
       focus: focusTopic,
     };
 
-    console.log(chalk.bold.magenta("\n  memex — resuming session\n"));
+    printLogo();
+    console.log(chalk.bold("  resuming session\n"));
     if (useMcp) {
       console.log(chalk.dim("  Mode: MCP (context served on demand via tools)"));
     }
