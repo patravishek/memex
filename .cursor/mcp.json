@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "memex": {
+      "command": "/Users/avishekpatra/.nvm/versions/node/v20.17.0/bin/memex",
+      "args": [
+        "serve",
+        "--project",
+        "/Users/avishekpatra/Projects/memex"
+      ],
+      "env": {}
+    }
+  }
+}
