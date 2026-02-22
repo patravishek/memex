@@ -486,14 +486,27 @@ program
   .command("status")
   .description("Show current memory for this project")
   .option("-p, --project <path>", "Project directory", process.cwd())
+  .option("--json", "Output memory as JSON (for tooling / IDE extensions)")
   .action((options) => {
     const projectPath = path.resolve(options.project);
     const memory = loadMemory(projectPath);
 
     if (!memory) {
-      console.log(
-        chalk.yellow("\n  No memory found. Run `memex start` to begin tracking.\n")
-      );
+      if (options.json) {
+        console.log(JSON.stringify({ error: "No memory found" }));
+      } else {
+        console.log(
+          chalk.yellow("\n  No memory found. Run `memex start` to begin tracking.\n")
+        );
+      }
+      return;
+    }
+
+    if (options.json) {
+      const memexDir = getMemexDir(projectPath);
+      const db = getDb(memexDir);
+      const sessions = listSessions(db, projectPath, 1000);
+      console.log(JSON.stringify({ ...memory, sessionCount: sessions.length }, null, 2));
       return;
     }
 

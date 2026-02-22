@@ -1,0 +1,46 @@
+name: Publish VS Code Extension
+
+on:
+  push:
+    tags:
+      - "vscode-v*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install extension dependencies
+        run: npm ci
+        working-directory: packages/memex-vscode
+
+      - name: Build extension
+        run: npm run build
+        working-directory: packages/memex-vscode
+
+      - name: Package extension
+        run: npm run package
+        working-directory: packages/memex-vscode
+
+      - name: Publish to VS Code Marketplace
+        run: npm run publish
+        working-directory: packages/memex-vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        run: npm run publish-ovsx
+        working-directory: packages/memex-vscode
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
