@@ -23,10 +23,13 @@ No more re-explaining your project. No more lost momentum. Memex works silently 
 ## Install
 
 ```bash
-# Via npm (recommended)
+# npm
 npm install -g @patravishek/memex
 
-# Via Homebrew
+# pnpm
+pnpm add -g @patravishek/memex
+
+# Homebrew
 brew install patravishek/memex/memex
 ```
 
@@ -122,10 +125,17 @@ Memory is **project-scoped** — each project has its own independent database a
 - An API key from Anthropic, OpenAI, or a LiteLLM enterprise proxy
 - Claude CLI — [install here](https://docs.anthropic.com/en/docs/claude-code)
 
-### Via npm (recommended)
+### Via npm / pnpm / yarn
 
 ```bash
+# npm
 npm install -g @patravishek/memex
+
+# pnpm
+pnpm add -g @patravishek/memex
+
+# yarn
+yarn global add @patravishek/memex
 ```
 
 Available on npm at [`@patravishek/memex`](https://www.npmjs.com/package/@patravishek/memex).
@@ -201,6 +211,8 @@ memex start aider
 memex start claude --project /path/to/project
 ```
 
+On first run, Memex automatically adds `.memex/` and `.mcp.json` to the project's `.gitignore` so session data is never accidentally committed.
+
 When you exit, you'll see:
 
 ```
@@ -220,10 +232,56 @@ memex resume claude
 
 Claude gets a brief summary of where things stand, then queries memory on demand — no 35k char dump, no performance warnings.
 
+**v0.4 options:**
+
 ```bash
-# Fall back to full context dump if needed
+# Focus memory on a specific area — sorts gotchas, tasks, decisions by relevance
+memex resume claude --focus "stripe webhooks"
+
+# Control how much context is injected (1=one-liner, 2=key facts, 3=full)
+memex resume claude --no-mcp --tier 2
+
+# Hard cap on context size (~1 token = 4 chars)
+memex resume claude --no-mcp --max-tokens 1000
+
+# Combine: focus + budget
+memex resume claude --no-mcp --focus "auth bug" --max-tokens 800
+
+# Fall back to full context dump (no MCP)
 memex resume claude --no-mcp
 ```
+
+The `--focus` topic is saved to memory automatically — future resumes pick it up without you retyping it.
+
+---
+
+### `memex focus [topic]`
+
+View or set the current focus topic for this project.
+
+```bash
+# Set a new focus (saved to memory, used on next resume automatically)
+memex focus "stripe payment integration"
+
+# List current focus and full history
+memex focus --list
+
+# Clear focus entirely
+memex focus --clear
+```
+
+```
+  memex — focus history
+
+  Current: stripe payment integration
+
+  Past topics (most recent first):
+    1. checkout redirect bug
+    2. auth refactor
+    3. onboarding UX
+```
+
+Focus history keeps the last 10 topics. The AI also updates `currentFocus` naturally during end-of-session compression as work shifts — so history builds up even without explicitly running `memex focus`.
 
 ---
 
@@ -352,7 +410,7 @@ When Claude connects via MCP, it can call these tools on demand:
 
 | Tool | What it does |
 |---|---|
-| `get_context()` | Project summary, stack, current focus |
+| `get_context()` | Project summary, stack, current focus. Accepts optional `focus` (relevance sort) and `tier` (1/2/3 verbosity) |
 | `get_tasks()` | Pending tasks |
 | `get_decisions()` | Key architectural decisions with reasons |
 | `get_gotchas()` | Pitfalls to avoid |
@@ -363,6 +421,28 @@ When Claude connects via MCP, it can call these tools on demand:
 | `save_observation(type, content)` | Save a note, task, decision, or gotcha mid-session |
 
 `save_observation` is particularly useful — Claude can save important discoveries immediately without waiting for end-of-session compression.
+
+Claude can also request a relevance-sorted view mid-session:
+
+```
+get_context(focus="payment flow", tier=2)
+```
+
+---
+
+## Privacy — `<memex:skip>` tag
+
+Wrap any text in a session with `<memex:skip>…</memex:skip>` and Memex will strip it from the transcript **before** it's sent to the AI for compression. The raw session log is unaffected (local only), but the compressed memory will never contain that content.
+
+Useful for passwords accidentally typed, personal context, internal URLs, or anything you don't want stored permanently:
+
+```
+<memex:skip>
+  Staging DB password: s3cr3t-temp
+</memex:skip>
+```
+
+The AI sees `[content excluded by <memex:skip>]` in its place.
 
 ---
 
@@ -376,10 +456,13 @@ When Claude connects via MCP, it can call these tools on demand:
     └── *-raw.txt     # Raw terminal recordings
 ```
 
-Add to `.gitignore` to keep raw logs out of version control:
+`.memex/` and `.mcp.json` are automatically added to the project's `.gitignore` on the first `memex start` or `memex resume`. Nothing needs to be done manually.
 
-```
-.memex/sessions/
+If `.memex/` was already committed to a repo before upgrading to v0.4, run once:
+
+```bash
+git rm -r --cached .memex/
+git commit -m "chore: stop tracking .memex directory"
 ```
 
 ---
@@ -407,7 +490,9 @@ Add to `.gitignore` to keep raw logs out of version control:
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for planned features — including a local web UI, semantic vector search, and more.
+**Current: v0.4.0** — Progressive context injection (tiered, focus-aware, token-budgeted)
+
+See [ROADMAP.md](ROADMAP.md) for what's next — including a local web UI, semantic vector search, and more.
 
 Contributions welcome. If a feature matters to you, open an issue.
 

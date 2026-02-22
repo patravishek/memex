@@ -61,6 +61,7 @@ export function getProject(
     keyDecisions: parseJson<KeyDecision[]>(row.key_decisions, []),
     recentSessions,
     lastConversation,
+    focusHistory: parseJson<string[]>(row.focus_history, []),
     lastUpdated: row.updated_at,
   };
 }
@@ -73,30 +74,32 @@ export function upsertProject(
 
   db.prepare(`
     INSERT INTO project
-      (path, name, description, stack, current_focus, pending_tasks,
-       gotchas, important_files, key_decisions, last_conversation,
-       created_at, updated_at)
+      (path, name, description, stack, current_focus, focus_history,
+       pending_tasks, gotchas, important_files, key_decisions,
+       last_conversation, created_at, updated_at)
     VALUES
-      (@path, @name, @description, @stack, @current_focus, @pending_tasks,
-       @gotchas, @important_files, @key_decisions, @last_conversation,
-       @created_at, @updated_at)
+      (@path, @name, @description, @stack, @current_focus, @focus_history,
+       @pending_tasks, @gotchas, @important_files, @key_decisions,
+       @last_conversation, @created_at, @updated_at)
     ON CONFLICT(path) DO UPDATE SET
-      name            = excluded.name,
-      description     = excluded.description,
-      stack           = excluded.stack,
-      current_focus   = excluded.current_focus,
-      pending_tasks   = excluded.pending_tasks,
-      gotchas         = excluded.gotchas,
-      important_files = excluded.important_files,
-      key_decisions   = excluded.key_decisions,
+      name              = excluded.name,
+      description       = excluded.description,
+      stack             = excluded.stack,
+      current_focus     = excluded.current_focus,
+      focus_history     = excluded.focus_history,
+      pending_tasks     = excluded.pending_tasks,
+      gotchas           = excluded.gotchas,
+      important_files   = excluded.important_files,
+      key_decisions     = excluded.key_decisions,
       last_conversation = excluded.last_conversation,
-      updated_at      = excluded.updated_at
+      updated_at        = excluded.updated_at
   `).run({
     path: memory.projectPath,
     name: memory.projectName,
     description: memory.description,
     stack: JSON.stringify(memory.stack),
     current_focus: memory.currentFocus,
+    focus_history: JSON.stringify(memory.focusHistory ?? []),
     pending_tasks: JSON.stringify(memory.pendingTasks),
     gotchas: JSON.stringify(memory.gotchas),
     important_files: JSON.stringify(memory.importantFiles),

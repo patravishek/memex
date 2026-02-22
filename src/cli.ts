@@ -7,6 +7,7 @@ import * as fs from "fs";
 import { SessionLogger, ConversationTurn } from "./core/session-logger.js";
 import { wrapProcess } from "./core/pty-wrapper.js";
 import { compressSession, buildResumePrompt, buildMcpHint, writeResumeFile } from "./memory/compressor.js";
+import { ContextOptions } from "./memory/context-builder.js";
 import { startMcpServer } from "./mcp/server.js";
 import { writeMcpJson, removeMcpJson, writeGlobalMcpJson } from "./mcp/config.js";
 import {
@@ -17,6 +18,8 @@ import {
   getMemexDir,
   memoryExists,
   clearMemory,
+  ensureGitignore,
+  setFocus,
 } from "./memory/store.js";
 import { getDb } from "./storage/db.js";
 import {
@@ -34,7 +37,7 @@ const program = new Command();
 program
   .name("memex")
   .description("Persistent memory for any AI terminal agent")
-  .version("0.3.1")
+  .version("0.4.0")
   .addHelpText("afterAll", "\n  npm: @patravishek/memex  |  https://github.com/patravishek/memex")
   .hook("preAction", (thisCommand) => {
     const aiCommands = ["start", "resume", "compress"];
@@ -72,6 +75,11 @@ program
   .action(async (command: string, options) => {
     const projectPath = path.resolve(options.project);
     const memexDir = getMemexDir(projectPath);
+
+    // Ensure .memex/ and .mcp.json are excluded from git in this project
+    if (ensureGitignore(projectPath)) {
+      console.log(chalk.dim("  Added .memex/ and .mcp.json to .gitignore\n"));
+    }
 
     console.log(chalk.bold.magenta("\n  memex — session started\n"));
     console.log(chalk.dim(`  Project: ${projectPath}`));
@@ -138,22 +146,72 @@ program
     "Disable MCP mode: inject full context via CLAUDE.md instead (v0.1 behaviour)",
     false
   )
+  .option(
+    "--tier <n>",
+    "Context verbosity: 1=one-liner, 2=key facts, 3=full (default: 3 for --no-mcp, 1 for MCP)",
+    (v) => parseInt(v, 10) as 1 | 2 | 3
+  )
+  .option(
+    "--max-tokens <n>",
+    "Approx token budget for injected context (1 token ≈ 4 chars). Default: no hard cap.",
+    (v) => parseInt(v, 10)
+  )
+  .option(
+    "--focus <topic>",
+    'Surface memory relevant to a specific topic first, e.g. --focus "auth bug"'
+  )
   .action(async (command: string, options) => {
     const projectPath = path.resolve(options.project);
     const memexDir = getMemexDir(projectPath);
     const memory = loadMemory(projectPath);
+
+    // Ensure .memex/ and .mcp.json are excluded from git in this project
+    if (ensureGitignore(projectPath)) {
+      console.log(chalk.dim("  Added .memex/ and .mcp.json to .gitignore\n"));
+    }
 
     // MCP mode: on by default for Claude, off for other agents or when --no-mcp passed.
     // In MCP mode we write a short hint (~500 chars) to CLAUDE.md + generate .mcp.json.
     // The full memory dump is served on demand via MCP tools.
     const useMcp = command === "claude" && options.mcp !== false;
 
-    console.log(chalk.bold.magenta("\n  memex — resuming session\n"));
-    if (useMcp) {
-      console.log(chalk.dim("  Mode: MCP (context served on demand via tools)\n"));
+    // v0.4: build ContextOptions from CLI flags.
+    // --focus also persists to memory.currentFocus so future resumes inherit it
+    // without needing to retype it. The AI updates currentFocus naturally during
+    // compression, so it stays fresh.
+    // If --focus is passed, persist it via setFocus (updates focusHistory too)
+    if (options.focus) {
+      setFocus(projectPath, options.focus);
     }
 
-    if (!memory) {
+    // Re-load after potential focus update
+    const currentMemory = loadMemory(projectPath);
+    const focusTopic: string | undefined =
+      currentMemory?.currentFocus || undefined;
+
+    const ctxOpts: ContextOptions = {
+      tier: options.tier ?? (useMcp ? 1 : 3),
+      maxTokens: options.maxTokens,
+      focus: focusTopic,
+    };
+
+    console.log(chalk.bold.magenta("\n  memex — resuming session\n"));
+    if (useMcp) {
+      console.log(chalk.dim("  Mode: MCP (context served on demand via tools)"));
+    }
+    if (ctxOpts.focus) {
+      const focusSource = options.focus ? "from flag, saved to memory" : "from memory";
+      console.log(chalk.dim(`  Focus: "${ctxOpts.focus}" (${focusSource})`));
+    }
+    if (ctxOpts.maxTokens) {
+      console.log(chalk.dim(`  Token budget: ~${ctxOpts.maxTokens} tokens`));
+    }
+    if (ctxOpts.tier && ctxOpts.tier !== 3) {
+      console.log(chalk.dim(`  Tier: ${ctxOpts.tier} (${ctxOpts.tier === 1 ? "one-liner" : "key facts"})`));
+    }
+    console.log();
+
+    if (!currentMemory) {
       console.log(
         chalk.yellow(
           "  No memory found for this project. Starting fresh session instead.\n"
@@ -164,7 +222,7 @@ program
       console.log(chalk.bold("  Restoring context:\n"));
       console.log(
         chalk.dim(
-          formatMemoryForPrompt(memory)
+          formatMemoryForPrompt(currentMemory)
             .split("\n")
             .map((l) => `  ${l}`)
             .join("\n")
@@ -179,14 +237,14 @@ program
     let originalClaudeMd: string | null = null;
     let wroteProjectMcpJson = false;
 
-    if (memory) {
+    if (currentMemory) {
       if (useMcp) {
         // ── MCP mode: short hint in CLAUDE.md + .mcp.json in project root ──
         originalClaudeMd = fs.existsSync(claudeMdPath)
           ? fs.readFileSync(claudeMdPath, "utf-8")
           : null;
 
-        const hint = buildMcpHint(memory);
+        const hint = buildMcpHint(currentMemory, { focus: ctxOpts.focus });
         const memexSection = [
           "<!-- MEMEX_CONTEXT_START -->",
           hint,
@@ -207,7 +265,7 @@ program
         console.log(chalk.dim("  Claude will auto-connect to Memex tools on startup\n"));
       } else {
         // ── Legacy mode: full context dump into CLAUDE.md / RESUME.md ──
-        writeResumeFile(memory, resumeFilePath);
+        writeResumeFile(currentMemory, resumeFilePath, ctxOpts);
 
         if (command === "claude") {
           originalClaudeMd = fs.existsSync(claudeMdPath)
@@ -333,6 +391,74 @@ program
       console.log(`  ${chalk.cyan(name.padEnd(28))} ${chalk.dim(desc)}`);
     }
     console.log();
+  });
+
+// ─── memex focus ──────────────────────────────────────────────────────────────
+program
+  .command("focus")
+  .description('Set the current focus topic, e.g. memex focus "auth bug"')
+  .argument("[topic]", "New focus topic to set")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .option("--list", "List current focus and all past focus topics")
+  .option("--clear", "Clear the current focus entirely")
+  .action((topic: string | undefined, options) => {
+    const projectPath = path.resolve(options.project);
+    const memory = loadMemory(projectPath);
+
+    if (!memory) {
+      console.log(chalk.yellow("\n  No memory found. Run `memex start` first.\n"));
+      return;
+    }
+
+    // ── Clear ────────────────────────────────────────────────────────────────
+    if (options.clear) {
+      setFocus(projectPath, "");
+      console.log(chalk.bold.magenta("\n  memex — focus cleared\n"));
+      return;
+    }
+
+    // ── List ─────────────────────────────────────────────────────────────────
+    if (options.list) {
+      console.log(chalk.bold.magenta("\n  memex — focus history\n"));
+
+      if (memory.currentFocus) {
+        console.log(chalk.bold("  Current: ") + chalk.green(memory.currentFocus));
+      } else {
+        console.log(chalk.dim("  Current: (none)"));
+      }
+
+      const history = memory.focusHistory ?? [];
+      if (history.length) {
+        console.log(chalk.dim("\n  Past topics (most recent first):"));
+        [...history].reverse().forEach((f, i) => {
+          console.log(chalk.dim(`    ${i + 1}. ${f}`));
+        });
+      } else {
+        console.log(chalk.dim("\n  No focus history yet."));
+      }
+      console.log();
+      return;
+    }
+
+    // ── Set ──────────────────────────────────────────────────────────────────
+    if (topic) {
+      const updated = setFocus(projectPath, topic);
+      console.log(chalk.bold.magenta("\n  memex — focus updated\n"));
+      console.log(chalk.bold("  Current: ") + chalk.green(updated.currentFocus));
+      if (updated.focusHistory?.length) {
+        console.log(chalk.dim(`\n  Previous: ${[...updated.focusHistory].reverse()[0]}`));
+      }
+      console.log(chalk.dim("\n  Use `memex focus --list` to see full history.\n"));
+      return;
+    }
+
+    // ── No args: show usage hint ──────────────────────────────────────────────
+    console.log(chalk.bold.magenta("\n  memex focus\n"));
+    console.log(chalk.dim("  Commands:"));
+    console.log(chalk.dim('    memex focus "my topic"      — set a new focus'));
+    console.log(chalk.dim("    memex focus --list          — list current + history"));
+    console.log(chalk.dim("    memex focus --clear         — clear current focus"));
+    console.log(chalk.dim('    memex resume claude --focus "my topic"  — set at session start\n'));
   });
 
 // ─── memex status ─────────────────────────────────────────────────────────────

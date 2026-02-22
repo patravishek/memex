@@ -16,6 +16,7 @@ import {
   ObservationType,
 } from "../storage/queries.js";
 import { getMemexDir } from "../memory/store.js";
+import { buildContext } from "../memory/context-builder.js";
 
 // ─── Tool manifest ────────────────────────────────────────────────────────────
 
@@ -23,8 +24,24 @@ const TOOLS = [
   {
     name: "get_context",
     description:
-      "Get the full project summary: name, description, tech stack, and current focus. Call this first when starting work.",
-    inputSchema: { type: "object", properties: {}, required: [] },
+      "Get the project summary. Call this first when starting work. Pass 'focus' to get memory sorted by relevance to a specific topic.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        focus: {
+          type: "string",
+          description:
+            "Optional topic to sort memory by relevance, e.g. \"auth bug\" or \"payment flow\".",
+        },
+        tier: {
+          type: "number",
+          enum: [1, 2, 3],
+          description:
+            "Verbosity: 1=one-liner, 2=key facts + top tasks/gotchas, 3=full context (default: 3)",
+        },
+      },
+      required: [],
+    },
   },
   {
     name: "get_tasks",
@@ -146,13 +163,17 @@ async function dispatch(
       const memory = getProject(db(), projectPath);
       if (!memory) return "No memory found. Run `memex start` first.";
 
-      const lines = [`Project: ${memory.projectName}`, `Path:    ${memory.projectPath}`];
-      if (memory.description) lines.push(`\nDescription:\n${memory.description}`);
-      if (memory.stack.length) lines.push(`\nStack: ${memory.stack.join(", ")}`);
-      if (memory.currentFocus) lines.push(`\nCurrent focus: ${memory.currentFocus}`);
+      const focus = args.focus ? String(args.focus) : undefined;
+      const tier = args.tier ? (Number(args.tier) as 1 | 2 | 3) : 3;
+
+      const ctx = buildContext(memory, { tier, focus });
+      const header = [`Path: ${memory.projectPath}`];
       if (memory.lastUpdated)
-        lines.push(`\nMemory last updated: ${new Date(memory.lastUpdated).toLocaleString()}`);
-      return lines.join("\n");
+        header.push(`Memory last updated: ${new Date(memory.lastUpdated).toLocaleString()}`);
+      if (focus)
+        header.push(`(sorted by relevance to: "${focus}")`);
+
+      return [...header, "", ctx].join("\n");
     }
 
     case "get_tasks": {

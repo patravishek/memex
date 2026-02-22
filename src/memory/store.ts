@@ -34,6 +34,12 @@ export interface ProjectMemory {
   description: string;
   keyDecisions: KeyDecision[];
   currentFocus: string;
+  /**
+   * Rolling history of past focus topics (max 10, newest last).
+   * Populated whenever currentFocus changes — either via --focus flag or
+   * by AI compression detecting a topic shift.
+   */
+  focusHistory: string[];
   pendingTasks: string[];
   importantFiles: ImportantFile[];
   /** Things that went wrong or surprised us — prevents repeating mistakes */
@@ -100,6 +106,7 @@ export function initMemory(projectPath: string): ProjectMemory {
     description: "",
     keyDecisions: [],
     currentFocus: "",
+    focusHistory: [],
     pendingTasks: [],
     importantFiles: [],
     gotchas: [],
@@ -108,6 +115,32 @@ export function initMemory(projectPath: string): ProjectMemory {
     lastUpdated: new Date().toISOString(),
   };
 
+  saveMemory(projectPath, memory);
+  return memory;
+}
+
+const MAX_FOCUS_HISTORY = 10;
+
+/**
+ * Update currentFocus and push the previous value to focusHistory.
+ * Pass an empty string to clear focus entirely.
+ * Safe to call with the same value — no-ops if focus hasn't changed.
+ */
+export function setFocus(projectPath: string, topic: string): ProjectMemory {
+  const memory = loadMemory(projectPath) ?? initMemory(projectPath);
+  const prev = memory.currentFocus ?? "";
+
+  if (prev === topic) return memory; // no change
+
+  if (prev && !memory.focusHistory?.includes(prev)) {
+    memory.focusHistory = [
+      ...(memory.focusHistory ?? []),
+      prev,
+    ].slice(-MAX_FOCUS_HISTORY);
+  }
+
+  memory.currentFocus = topic;
+  memory.lastUpdated = new Date().toISOString();
   saveMemory(projectPath, memory);
   return memory;
 }
@@ -176,4 +209,42 @@ export function formatMemoryForPrompt(memory: ProjectMemory): string {
   }
 
   return lines.join("\n");
+}
+
+// ─── Git protection ───────────────────────────────────────────────────────────
+
+const GITIGNORE_ENTRIES = [".memex/", ".mcp.json"];
+const GITIGNORE_BLOCK_START = "# Memex — auto-added";
+const GITIGNORE_BLOCK_END = "# end Memex";
+
+/**
+ * Ensure the project's .gitignore contains entries to exclude Memex artefacts.
+ * Safe to call on every `start` and `resume` — idempotent.
+ * Returns true if .gitignore was modified, false if it was already up to date.
+ */
+export function ensureGitignore(projectPath: string): boolean {
+  const gitignorePath = path.join(projectPath, ".gitignore");
+  const existing = fs.existsSync(gitignorePath)
+    ? fs.readFileSync(gitignorePath, "utf-8")
+    : "";
+
+  // Already has the block — nothing to do
+  if (existing.includes(GITIGNORE_BLOCK_START)) return false;
+
+  // Filter to only entries not already present line-by-line
+  const missing = GITIGNORE_ENTRIES.filter(
+    (entry) => !existing.split("\n").some((line) => line.trim() === entry)
+  );
+  if (missing.length === 0) return false;
+
+  const block = [
+    "",
+    GITIGNORE_BLOCK_START,
+    ...missing,
+    GITIGNORE_BLOCK_END,
+    "",
+  ].join("\n");
+
+  fs.writeFileSync(gitignorePath, existing + block, "utf-8");
+  return true;
 }

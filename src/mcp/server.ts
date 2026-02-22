@@ -10,7 +10,7 @@ import { registerTools } from "./tools.js";
  */
 export async function startMcpServer(projectPath: string): Promise<void> {
   const server = new Server(
-    { name: "memex", version: "0.3.0" },
+    { name: "memex", version: "0.4.0" },
     {
       capabilities: {
         tools: {},

@@ -135,4 +135,13 @@ function runMigrations(db: Database.Database): void {
       INSERT INTO schema_version VALUES (2);
     `);
   }
+
+  if (currentVersion < 3) {
+    db.exec(`
+      -- Rolling history of past focus topics (JSON array of strings)
+      ALTER TABLE project ADD COLUMN focus_history TEXT NOT NULL DEFAULT '[]';
+
+      INSERT INTO schema_version VALUES (3);
+    `);
+  }
 }

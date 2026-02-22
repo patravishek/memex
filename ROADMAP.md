@@ -2,7 +2,7 @@
 
 This document outlines the planned evolution of Memex. Features are grouped by milestone. Priorities may shift based on community feedback.
 
-> **Current version:** v0.3.0  
+> **Current version:** v0.4.0  
 > **Core value prop:** Agent-agnostic persistent memory — works with Claude, GPT, Aider, or any CLI agent. Simple install, no heavy dependencies, enterprise-ready via LiteLLM.
 
 Contributions welcome. If a feature matters to you, open an issue or a PR.
@@ -46,21 +46,38 @@ Contributions welcome. If a feature matters to you, open an issue or a PR.
 
 ---
 
-## v0.4 — Progressive Context Injection
+## v0.4 — Progressive Context Injection ✅ (current)
 
 > Stop dumping all memory at once. Layer context intelligently to save tokens.
 
 **Why:** Injecting everything into the first message is expensive and noisy. Most sessions only need a fraction of the stored memory. Progressive disclosure — inject a compact summary first, let the agent request more — is significantly more token-efficient on large or long-running projects.
 
-- [ ] **Tiered injection** — inject a 3-level summary: one-liner → key facts → full context
-- [ ] **Token budget option** — `--max-tokens <n>` flag to cap how much context is injected
-- [ ] **Relevance scoring** — surface the most recently touched areas first, not just everything
-- [ ] **`<memex:skip>` tag** — any content wrapped in this tag is excluded from compression and injection (privacy control)
-- [ ] **Focus-aware injection** — if a session starts with a specific task ("fix the login bug"), inject only memory relevant to that area
+- [x] **Tiered injection** — `--tier 1|2|3`: one-liner → key facts → full context (default 3)
+- [x] **Token budget option** — `--max-tokens <n>` flag to cap how much context is injected
+- [x] **Relevance scoring** — `--focus "<topic>"` sorts tasks, gotchas, decisions by keyword relevance; items most related to the focus surface first (and survive if budget is tight)
+- [x] **`<memex:skip>` tag** — any content in the session transcript wrapped with `<memex:skip>…</memex:skip>` is stripped before AI compression (privacy control)
+- [x] **Focus-aware injection** — `--focus` works in both MCP and `--no-mcp` mode; also available as a `tier`/`focus` parameter on the `get_context()` MCP tool
 
 ---
 
-## v0.5 — Web UI
+## v0.5 — IDE Support
+
+> Bring Memex memory to IDE-based AI agents — Cursor, Copilot, Windsurf, and beyond.
+
+**Why:** Memex currently only wraps CLI agents (`claude`, `aider`, `sgpt`). Most developers use IDE-integrated AI — Cursor Agent, GitHub Copilot, Windsurf. These tools have no terminal process to intercept, so the PTY wrapping approach doesn't apply. A VS Code / Cursor extension can hook into the editor's AI conversation API and bring the same persistent memory experience to IDE workflows.
+
+- [ ] **Cursor / VS Code extension** — `memex-vscode` extension published to the VS Code Marketplace and Open VSX
+- [ ] **Session capture** — hook into the IDE's AI chat API to record conversations as Memex sessions
+- [ ] **Context injection on chat open** — automatically inject a tier-1 or tier-2 context hint at the start of each new AI chat
+- [ ] **MCP integration** — register Memex as an MCP server inside Cursor so `get_context()`, `get_tasks()`, `search_sessions()` are available to Cursor Agent natively
+- [ ] **Focus panel** — a sidebar panel showing current focus, pending tasks, and recent sessions without leaving the editor
+- [ ] **Inline `save_observation` command** — highlight any text in the editor and right-click → "Save to Memex memory" (saves as a note or decision)
+- [ ] **End-of-chat compression** — when an AI chat session ends, trigger the same compression pipeline as the CLI to update `memex.db`
+- [ ] **Unified memory** — CLI and IDE sessions share the same `.memex/memex.db` — switch between `claude` CLI and Cursor Agent on the same project without losing context
+
+---
+
+## v0.6 — Web UI
 
 > A local dashboard for browsing and editing project memory without touching JSON.
 
@@ -75,7 +92,7 @@ Contributions welcome. If a feature matters to you, open an issue or a PR.
 
 ---
 
-## v0.6 — Agent Lifecycle Hooks
+## v0.7 — Agent Lifecycle Hooks
 
 > Move beyond PTY wrapping to proper agent integration points.
 
@@ -90,6 +107,8 @@ Contributions welcome. If a feature matters to you, open an issue or a PR.
 ---
 
 ## v1.0 — Semantic Memory & Vector Search
+
+
 
 > Embed sessions into vectors. Make memory genuinely intelligent.
 
@@ -119,7 +138,7 @@ Contributions welcome. If a feature matters to you, open an issue or a PR.
 These are intentionally out of scope to keep Memex simple and dependency-light:
 
 - **Cloud sync / hosted memory** — memory stays local by default; no account, no SaaS
-- **Claude-only integration** — Memex will always support any CLI agent
+- **Claude-only integration** — Memex will always support any CLI agent and eventually any IDE agent
 - **Heavy runtime requirements** — no mandatory Bun, uv, or vector database install for basic use
 
 ---

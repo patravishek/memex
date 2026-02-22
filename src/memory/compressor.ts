@@ -4,9 +4,29 @@ import {
   loadMemory,
   saveMemory,
   initMemory,
-  KeyDecision,
-  ImportantFile,
 } from "./store.js";
+import {
+  buildContext,
+  buildResumeContent,
+  ContextOptions,
+} from "./context-builder.js";
+
+// ─── <memex:skip> filter ─────────────────────────────────────────────────────
+
+/**
+ * Strip <memex:skip>…</memex:skip> blocks from a transcript before it is
+ * sent to the AI for compression.  The removed span is replaced with a
+ * placeholder so the AI is aware content was deliberately excluded.
+ *
+ * Usage: type `<memex:skip>` before and `</memex:skip>` after any text you
+ * don't want stored (passwords, personal context, etc.).
+ */
+export function applySkipFilter(transcript: string): string {
+  return transcript.replace(
+    /<memex:skip>[\s\S]*?<\/memex:skip>/gi,
+    "[content excluded by <memex:skip>]"
+  );
+}
 
 const SYSTEM_PROMPT = `You are a memory manager for an AI coding agent. 
 Your job is to extract and maintain a structured understanding of a software project 
@@ -27,6 +47,11 @@ export async function compressSession(
       ? `Existing project memory:\n${JSON.stringify(existing, null, 2)}`
       : "No existing memory for this project.";
 
+  // Strip any <memex:skip> blocks before sending to the AI
+  const safeTranscript = applySkipFilter(transcript);
+
+  const existingFocusHistory = existing.focusHistory ?? [];
+
   const response = await chat(
     [
       {
@@ -36,7 +61,7 @@ export async function compressSession(
 ${existingContext}
 
 --- TRANSCRIPT ---
-${transcript.slice(-12000)}
+${safeTranscript.slice(-12000)}
 --- END TRANSCRIPT ---
 
 Return an updated JSON object merging existing memory with new information from this session.
@@ -49,7 +74,8 @@ Schema:
   "keyDecisions": [
     { "decision": "string", "reason": "string", "date": "ISO date string" }
   ],
-  "currentFocus": "string - what is being worked on right now",
+  "currentFocus": "string - what was being worked on at the END of this transcript (update this if the work shifted during the session)",
+  "focusHistory": ["string array - previous focus topics, newest last, max 10 entries"],
   "pendingTasks": ["string array - tasks mentioned but not completed"],
   "importantFiles": [
     { "filePath": "string", "purpose": "string" }
@@ -58,6 +84,12 @@ Schema:
   "recentSessions": ${JSON.stringify(existing.recentSessions ?? [])},
   "lastUpdated": "${new Date().toISOString()}"
 }
+
+IMPORTANT for currentFocus and focusHistory:
+- Set currentFocus to whatever was being worked on at the END of the transcript, even if it differs from the existing value.
+- If currentFocus changed from "${existing.currentFocus ?? ""}", add the old value to focusHistory (if not already present).
+- Existing focusHistory to carry forward: ${JSON.stringify(existingFocusHistory)}
+- Keep focusHistory to the last 10 entries only.
 
 Add a new entry to recentSessions:
 { "date": "${new Date().toISOString()}", "summary": "2-3 sentence summary of this session", "logFile": "${logFile}" }
@@ -78,6 +110,19 @@ Return ONLY the JSON, no markdown, no explanation.`,
       .trim();
 
     const updated = JSON.parse(cleaned) as ProjectMemory;
+
+    // Ensure focusHistory is never lost if the AI omits it
+    if (!Array.isArray(updated.focusHistory) || updated.focusHistory.length === 0) {
+      // Carry forward existing history; if focus changed, push old value in
+      const prev = existing.currentFocus ?? "";
+      const next = updated.currentFocus ?? "";
+      if (prev && prev !== next && !existingFocusHistory.includes(prev)) {
+        updated.focusHistory = [...existingFocusHistory, prev].slice(-10);
+      } else {
+        updated.focusHistory = existingFocusHistory;
+      }
+    }
+
     saveMemory(projectPath, updated);
     return updated;
   } catch (parseErr) {
@@ -100,85 +145,39 @@ Return ONLY the JSON, no markdown, no explanation.`,
   }
 }
 
-export function buildResumePrompt(memory: ProjectMemory): string {
-  const lastSession = memory.recentSessions.at(-1);
-  const lastDate = lastSession
-    ? new Date(lastSession.date).toLocaleString()
-    : "unknown";
-
-  const sections: string[] = [
-    `Project: ${memory.projectName}`,
-  ];
-
-  if (memory.description) sections.push(`Description: ${memory.description}`);
-  if (memory.stack.length) sections.push(`Stack: ${memory.stack.join(", ")}`);
-  if (memory.currentFocus) sections.push(`Current focus: ${memory.currentFocus}`);
-
-  if (memory.pendingTasks.length) {
-    sections.push(`Pending tasks:\n${memory.pendingTasks.map((t) => `- ${t}`).join("\n")}`);
-  }
-
-  if (memory.keyDecisions.length) {
-    sections.push(`Key decisions:\n${memory.keyDecisions.map((d) => `- ${d.decision} (${d.reason})`).join("\n")}`);
-  }
-
-  if (memory.gotchas.length) {
-    sections.push(`Gotchas to avoid:\n${memory.gotchas.map((g) => `- ${g}`).join("\n")}`);
-  }
-
-  if (memory.importantFiles.length) {
-    sections.push(`Important files:\n${memory.importantFiles.map((f) => `- ${f.filePath}: ${f.purpose}`).join("\n")}`);
-  }
-
-  if (lastSession) {
-    sections.push(`Last session (${lastDate}):\n${lastSession.summary}`);
-  }
-
-  return [
-    "# Memex — Session Context",
-    "",
-    "> This file was written by Memex before this session started.",
-    "> **When you start, read this fully, then immediately say:**",
-    "> _\"Continuing from our last session — [one sentence on where we left off]. Here's what I have in memory: [brief summary]. What would you like to work on?\"_",
-    "",
-    "---",
-    "",
-    sections.join("\n\n"),
-  ].join("\n");
+/**
+ * Build the plain resume context block (used internally and in tests).
+ * External callers can pass ContextOptions for tier/budget/focus control.
+ */
+export function buildResumePrompt(
+  memory: ProjectMemory,
+  opts: ContextOptions = {}
+): string {
+  return buildResumeContent(memory, { tier: 3, ...opts });
 }
 
 /**
- * Build a short (~500 char) CLAUDE.md hint used when MCP mode is active.
- * Instead of dumping everything, it tells Claude where it left off and
- * instructs it to use MCP tools for full context. This eliminates the
- * "Large CLAUDE.md will impact performance" warning entirely.
+ * Build a short (~300 char) CLAUDE.md hint for MCP mode.
+ * Tier 1 orientation only — agent pulls full detail via tools.
+ * Accepts an optional focus to surface in the hint.
  */
-export function buildMcpHint(memory: ProjectMemory): string {
-  const lastSession = memory.recentSessions.at(-1);
-  const lastDate = lastSession
-    ? new Date(lastSession.date).toLocaleDateString()
-    : null;
+export function buildMcpHint(
+  memory: ProjectMemory,
+  opts: Pick<ContextOptions, "focus"> = {}
+): string {
+  const oneLiner = buildContext(memory, { tier: 1, ...opts });
 
   const lines = [
     "# Memex — Session Context (MCP mode)",
     "",
-    "> Full memory is available via MCP tools. Use them to retrieve context on demand.",
-    "",
-    "---",
-    "",
-    `**Project:** ${memory.projectName}`,
+    "> Full memory available via MCP tools. Use them to retrieve context on demand.",
   ];
 
-  if (memory.currentFocus) {
-    lines.push(`**Current focus:** ${memory.currentFocus}`);
+  if (opts.focus) {
+    lines.push(`> Focus filter: **"${opts.focus}"** — call \`get_context()\` for relevance-sorted details.`);
   }
 
-  if (lastSession) {
-    lines.push(`**Last session (${lastDate}):** ${lastSession.summary}`);
-  }
-
-  lines.push(
-    "",
+  lines.push("", "---", "", oneLiner, "",
     "**When you start:**",
     "1. Call `get_context()` for the full project summary",
     "2. Call `get_gotchas()` before touching any sensitive areas",
@@ -190,18 +189,22 @@ export function buildMcpHint(memory: ProjectMemory): string {
 }
 
 /**
- * Write resume context to a markdown file so it can be read cleanly
- * without being piped through stdin (which causes formatting issues).
- * Includes the recent conversation history if available, simulating
- * Claude's --resume behaviour without relying on server-side sessions.
+ * Write resume context to a CLAUDE.md file.
+ *
+ * Accepts ContextOptions so the caller can pass --tier / --max-tokens / --focus.
+ * Appends recent conversation turns after the context block for non-MCP mode.
  */
-const CLAUDE_MD_CHAR_LIMIT = 35000; // Stay safely under Claude's 40k warning
-const MAX_TURNS_IN_CLAUDE_MD = 10;   // Last N turns of conversation to inject
-const MAX_TURN_CHARS = 1500;         // Truncate individual long turns
+const DEFAULT_CHAR_LIMIT = 35000; // Stay safely under Claude's 40k warning
+const MAX_TURNS_IN_CLAUDE_MD = 10;
+const MAX_TURN_CHARS = 1500;
 
-export function writeResumeFile(memory: ProjectMemory, filePath: string): void {
+export function writeResumeFile(
+  memory: ProjectMemory,
+  filePath: string,
+  opts: ContextOptions = {}
+): void {
   const fs = require("fs") as typeof import("fs");
-  const lines: string[] = [buildResumePrompt(memory)];
+  const lines: string[] = [buildResumeContent(memory, { tier: 3, ...opts })];
 
   if (memory.lastConversation && memory.lastConversation.length > 0) {
     const recentTurns = memory.lastConversation.slice(-MAX_TURNS_IN_CLAUDE_MD);
@@ -225,16 +228,19 @@ export function writeResumeFile(memory: ProjectMemory, filePath: string): void {
     }
   }
 
-  // Hard cap — truncate from the bottom (trim conversation history, keep memory)
+  // Effective char limit: honour maxTokens if set, otherwise default
+  const charLimit = opts.maxTokens
+    ? opts.maxTokens * 4
+    : DEFAULT_CHAR_LIMIT;
+
   let content = lines.join("\n");
-  if (content.length > CLAUDE_MD_CHAR_LIMIT) {
-    content = content.slice(0, CLAUDE_MD_CHAR_LIMIT);
-    // Ensure we don't cut mid-line
+  if (content.length > charLimit) {
+    content = content.slice(0, charLimit);
     const lastNewline = content.lastIndexOf("\n");
-    if (lastNewline > CLAUDE_MD_CHAR_LIMIT * 0.8) {
+    if (lastNewline > charLimit * 0.8) {
       content = content.slice(0, lastNewline);
     }
-    content += "\n\n> [Memex: conversation history truncated to fit size limit]";
+    content += "\n\n> [Memex: conversation history truncated to fit token budget]";
   }
 
   fs.writeFileSync(filePath, content, "utf-8");
