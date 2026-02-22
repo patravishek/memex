@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import { execSync } from "child_process";
 
 interface McpServerEntry {
   command: string;
@@ -12,9 +13,19 @@ interface McpConfig {
   mcpServers: Record<string, McpServerEntry>;
 }
 
+function resolveMemexBinary(): string {
+  // Try to find the full path so Cursor/IDE processes that don't load
+  // shell profiles (nvm, volta, fnm) can still find the binary.
+  try {
+    return execSync("which memex", { encoding: "utf-8" }).trim();
+  } catch {
+    return "memex"; // fallback — works if memex is in system PATH
+  }
+}
+
 function buildMemexEntry(projectPath: string): McpServerEntry {
   return {
-    command: "memex",
+    command: resolveMemexBinary(),
     args: ["serve", "--project", projectPath],
     env: {},
   };
