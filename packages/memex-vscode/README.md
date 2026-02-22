@@ -1,10 +1,6 @@
-<p align="center">
-  <img src="images/icon.png" width="100" alt="Memex" />
-</p>
+# Memex
 
-<h1 align="center">Memex</h1>
-
-<p align="center">Persistent, agent-agnostic memory for AI coding tools — now inside your IDE.</p>
+> Persistent, agent-agnostic memory for AI coding tools — now inside your IDE.
 
 ---
 
