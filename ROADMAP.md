@@ -106,6 +106,20 @@ Contributions welcome. If a feature matters to you, open an issue or a PR.
 
 ---
 
+## v0.8 — JetBrains Plugin
+
+> Bring Memex memory to IntelliJ-based IDEs — IntelliJ IDEA, WebStorm, PyCharm, GoLand, and beyond.
+
+**Why:** JetBrains IDEs are widely used by backend and polyglot developers. The VS Code extension covers the Cursor/Copilot audience, but a large portion of developers work exclusively in JetBrains tools. The core Memex logic (`.memex/memex.db`, `memex serve`, `save_observation`) is IDE-agnostic — only the integration layer needs to be rewritten in Kotlin using the IntelliJ Platform SDK.
+
+- [ ] **`memex-intellij` plugin** — published to [JetBrains Marketplace](https://plugins.jetbrains.com)
+- [ ] **Memory tool window** — sidebar panel showing current focus, pending tasks, gotchas, and recent sessions
+- [ ] **Save to Memex action** — right-click any selected text → classify as task / decision / gotcha / note
+- [ ] **MCP auto-setup** — configure JetBrains AI Assistant to connect to `memex serve` on project open
+- [ ] **Unified memory** — shares the same `.memex/memex.db` as the CLI and VS Code extension
+
+---
+
 ## v1.0 — Semantic Memory & Vector Search
 
 
