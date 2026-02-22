@@ -4,7 +4,8 @@
 
 <h1 align="center">Memex</h1>
 
-<p align="center">Your AI coding agent now remembers everything — across every session, every day.</p>
+<p align="center">Persistent, agent-agnostic memory for AI coding tools.</p>
+<p align="center">Works across Claude, Cursor, Copilot, Gemini — and any MCP-compatible agent.</p>
 
 ```
     Day 1                              Day 2
@@ -20,7 +21,7 @@
   [Memex saves everything]          Back in flow in 10 seconds.
 ```
 
-No more re-explaining your project. No more lost momentum. Memex works silently in the background — you just open and close Claude like normal.
+No more re-explaining your project. No more lost momentum. Switch between Claude CLI, Cursor Agent, Copilot, or any MCP-compatible tool — they all share the same memory. Start a feature in Claude, continue it in Cursor, hand it off to a teammate using a different tool entirely. The context follows the project, not the agent.
 
 ---
 
@@ -473,12 +474,36 @@ git commit -m "chore: stop tracking .memex directory"
 
 ## Works with any agent
 
+Memory lives in `.memex/memex.db` — a local SQLite file that every agent reads from and writes to via MCP. Switch tools mid-project without losing a single byte of context.
+
+**CLI agents** (session recording + auto-compression):
+
 | Agent | Command |
 |---|---|
 | Claude CLI | `memex start claude` |
 | Aider | `memex start aider` |
 | Shell-GPT | `memex start sgpt` |
 | Any CLI agent | `memex start your-agent` |
+
+**IDE agents** (MCP tools available on demand):
+
+| Agent | How |
+|---|---|
+| Cursor Agent | Auto-configured via `.cursor/mcp.json` — install the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=patravishek.memex-vscode) or run `memex setup-mcp` |
+| GitHub Copilot | Auto-configured via `.vscode/mcp.json` — same extension |
+| Any MCP client | Run `memex serve --project /path/to/project` |
+
+**The interoperability story:**
+
+```
+Start feature with Claude CLI          memex resume claude
+         ↓ session compressed into
+    .memex/memex.db  ←── single source of truth
+         ↑ MCP tools              ↑ MCP tools
+  Cursor Agent              GitHub Copilot
+  get_context()             get_tasks()
+  save_observation()        search_sessions()
+```
 
 ---
 
