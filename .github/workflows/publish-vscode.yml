@@ -40,6 +40,7 @@ jobs:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Publish to Open VSX
+        if: ${{ secrets.OVSX_PAT != '' }}
         run: npm run publish-ovsx
         working-directory: packages/memex-vscode
         env:
