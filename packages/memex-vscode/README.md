@@ -39,15 +39,31 @@ Also available via `Cmd+Shift+P` → **Save to Memex** to type content manually.
 
 ## Requirements
 
-- [Memex CLI](https://www.npmjs.com/package/@patravishek/memex) installed globally:
-  ```bash
-  npm install -g @patravishek/memex
-  ```
-- An API key for compression (Anthropic, OpenAI, or LiteLLM):
-  ```bash
-  export ANTHROPIC_API_KEY=sk-ant-...
-  ```
-- A project with Memex initialized (run `memex start` once in your terminal)
+> **The Memex CLI npm package must be installed globally for this extension to work.** The extension is a UI layer — it relies on the CLI for all memory operations, MCP serving, and database access.
+
+1. **Install the Memex CLI** (required):
+   ```bash
+   npm install -g @patravishek/memex
+   ```
+   Verify it's installed:
+   ```bash
+   memex --version
+   ```
+
+2. **Add an AI API key** (required for session compression when using CLI agents):
+   ```bash
+   # Add to ~/.zshrc or ~/.bashrc, then reload your shell
+   export ANTHROPIC_API_KEY=sk-ant-...
+   # or
+   export OPENAI_API_KEY=sk-...
+   ```
+
+3. **Initialize Memex for your project** (required once per project):
+   ```bash
+   cd your-project
+   memex init
+   ```
+   Or click the **"Initialize Project"** button in the Memex sidebar panel — no terminal needed.
 
 ---
 
