@@ -25,6 +25,13 @@ jobs:
         run: npm ci
         working-directory: packages/memex-vscode
 
+      - name: Resize icon to 256x256
+        run: |
+          sudo apt-get install -y imagemagick
+          convert packages/memex-vscode/images/icon.png \
+            -resize 256x256 \
+            packages/memex-vscode/images/icon.png
+
       - name: Build extension
         run: npm run build
         working-directory: packages/memex-vscode
@@ -38,6 +45,13 @@ jobs:
         working-directory: packages/memex-vscode
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Create Open VSX namespace (if not exists)
+        if: env.OVSX_PAT != ''
+        run: npx ovsx create-namespace avishekp86 --pat $OVSX_PAT || true
+        working-directory: packages/memex-vscode
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
       - name: Publish to Open VSX
         if: env.OVSX_PAT != ''
