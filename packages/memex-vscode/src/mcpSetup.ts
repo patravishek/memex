@@ -41,8 +41,9 @@ function writeMcpFile(filePath: string, projectPath: string): boolean {
 
       // Already has an up-to-date memex entry — skip
       const current = existing.mcpServers["memex"];
+      const expectedCommand = resolveMemexBinary();
       if (
-        current?.command === "memex" &&
+        current?.command === expectedCommand &&
         JSON.stringify(current.args) === JSON.stringify(["serve", "--project", projectPath])
       ) {
         return false;
