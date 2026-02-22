@@ -48,7 +48,7 @@ jobs:
 
       - name: Create Open VSX namespace (if not exists)
         if: env.OVSX_PAT != ''
-        run: npx ovsx create-namespace avishekp86 --pat $OVSX_PAT || true
+        run: npx ovsx create-namespace patravishek --pat $OVSX_PAT || true
         working-directory: packages/memex-vscode
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}

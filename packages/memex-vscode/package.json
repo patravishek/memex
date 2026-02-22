@@ -3,7 +3,7 @@
   "displayName": "Memex",
   "description": "Persistent memory for AI coding agents — Cursor, Copilot, and beyond",
   "version": "0.5.0",
-  "publisher": "avishekp86",
+  "publisher": "patravishek",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
