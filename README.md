@@ -33,9 +33,6 @@ npm install -g @patravishek/memex
 
 # pnpm
 pnpm add -g @patravishek/memex
-
-# Homebrew
-brew install patravishek/memex/memex
 ```
 
 Then add your API key to `~/.zshrc`:
@@ -151,12 +148,6 @@ yarn global add @patravishek/memex
 ```
 
 Available on npm at [`@patravishek/memex`](https://www.npmjs.com/package/@patravishek/memex).
-
-### Via Homebrew
-
-```bash
-brew install patravishek/memex/memex
-```
 
 ### From source
 
