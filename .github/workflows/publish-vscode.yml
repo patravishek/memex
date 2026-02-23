@@ -4,6 +4,16 @@ on:
   push:
     tags:
       - "vscode-v*"
+  workflow_dispatch:
+    inputs:
+      skip_marketplace:
+        description: "Skip VS Code Marketplace (use when version already published there)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 jobs:
   publish:
@@ -41,6 +51,7 @@ jobs:
         working-directory: packages/memex-vscode
 
       - name: Publish to VS Code Marketplace
+        if: inputs.skip_marketplace != 'true'
         working-directory: packages/memex-vscode
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
