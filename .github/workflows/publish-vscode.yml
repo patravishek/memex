@@ -41,10 +41,18 @@ jobs:
         working-directory: packages/memex-vscode
 
       - name: Publish to VS Code Marketplace
-        run: npm run publish
         working-directory: packages/memex-vscode
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          OUTPUT=$(npm run publish 2>&1) && echo "$OUTPUT" || {
+            echo "$OUTPUT"
+            if echo "$OUTPUT" | grep -q "already exists"; then
+              echo "Version already published — skipping."
+            else
+              exit 1
+            fi
+          }
 
       - name: Create Open VSX namespace (if not exists)
         if: env.OVSX_PAT != ''
