@@ -48,6 +48,7 @@ jobs:
 
       - name: Create Open VSX namespace (if not exists)
         if: env.OVSX_PAT != ''
+        continue-on-error: true
         run: npx ovsx create-namespace patravishek --pat $OVSX_PAT || true
         working-directory: packages/memex-vscode
         env:
@@ -55,6 +56,7 @@ jobs:
 
       - name: Publish to Open VSX
         if: env.OVSX_PAT != ''
+        continue-on-error: true
         working-directory: packages/memex-vscode
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
@@ -63,10 +65,9 @@ jobs:
             echo "Attempt $attempt..."
             npm run publish-ovsx && break
             if [ $attempt -lt 3 ]; then
-              echo "Failed, retrying in 15s..."
+              echo "Open VSX attempt $attempt failed, retrying in 15s..."
               sleep 15
             else
-              echo "All attempts failed — Open VSX may be temporarily unavailable."
-              exit 1
+              echo "All 3 attempts failed — Open VSX may be temporarily unavailable. VS Code Marketplace was already published successfully."
             fi
           done
