@@ -55,7 +55,27 @@ Memex uses a small AI call at the end of each session to compress the transcript
 | **OpenAI** | `export OPENAI_API_KEY=sk-...` | Paid |
 | **LiteLLM proxy** | `export LITELLM_API_KEY=... LITELLM_BASE_URL=...` | Your pricing |
 
-Add your chosen key to `~/.zshrc` and run `source ~/.zshrc`. That's the entire setup.
+Add your chosen key to `~/.zshrc` (or `~/.bashrc`):
+
+```bash
+# Example — pick whichever provider you're using (see Configuration below)
+
+# Free: Groq
+export LITELLM_BASE_URL=https://api.groq.com/openai/v1
+export LITELLM_API_KEY=gsk_...
+export LITELLM_MODEL=groq/llama-3.1-8b-instant
+
+# OR: Anthropic (paid)
+export ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Then reload your shell:
+
+```bash
+source ~/.zshrc
+```
+
+That's the entire setup. See [Configuration](#configuration) below for all supported providers including free options.
 
 ---
 
