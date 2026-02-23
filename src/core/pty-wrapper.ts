@@ -104,6 +104,31 @@ async function wrapWithScript(
       },
     });
 
+    // ── Graceful signal handling ───────────────────────────────────────────
+    // When a terminal window is closed (or the process receives SIGHUP/SIGTERM),
+    // the default behaviour kills Node before the `close` handler fires —
+    // meaning compression never runs. By registering handlers we:
+    //   1. Prevent Node from dying immediately (handler overrides default)
+    //   2. Kill the child `script` process so its `close` event fires
+    //   3. Let the normal close → compress flow complete before exiting
+    let finishing = false;
+    const gracefulShutdown = (signal: string) => {
+      if (finishing) return;
+      finishing = true;
+      try {
+        proc.kill("SIGTERM");
+      } catch {
+        // process may already be dead
+      }
+      // Node will exit naturally once the event loop drains after compression
+      // Remove listeners so further signals don't re-enter this handler
+      process.removeListener("SIGHUP", gracefulShutdown);
+      process.removeListener("SIGTERM", gracefulShutdown);
+    };
+
+    process.on("SIGHUP", gracefulShutdown);
+    process.on("SIGTERM", gracefulShutdown);
+
     // If injecting a resume prompt, auto-type it via a stdin write after delay
     if (injectFile && options.injectOnReady) {
       const delay = options.injectDelayMs ?? 3000;
@@ -123,10 +148,15 @@ async function wrapWithScript(
     }
 
     proc.on("error", (err) => {
+      process.removeListener("SIGHUP", gracefulShutdown);
+      process.removeListener("SIGTERM", gracefulShutdown);
       reject(new Error(`Failed to start session: ${err.message}`));
     });
 
     proc.on("close", (code) => {
+      process.removeListener("SIGHUP", gracefulShutdown);
+      process.removeListener("SIGTERM", gracefulShutdown);
+
       // Parse the raw script log into a readable transcript
       const transcript = parseScriptLog(rawLogPath);
 
@@ -169,7 +199,20 @@ async function wrapWithSpawn(
       }
     );
 
+    let finishing = false;
+    const gracefulShutdown = () => {
+      if (finishing) return;
+      finishing = true;
+      try { proc.kill("SIGTERM"); } catch { /* already dead */ }
+      process.removeListener("SIGHUP", gracefulShutdown);
+      process.removeListener("SIGTERM", gracefulShutdown);
+    };
+    process.on("SIGHUP", gracefulShutdown);
+    process.on("SIGTERM", gracefulShutdown);
+
     proc.on("error", (err) => {
+      process.removeListener("SIGHUP", gracefulShutdown);
+      process.removeListener("SIGTERM", gracefulShutdown);
       reject(
         new Error(
           `Could not start "${resolvedCommand}": ${err.message}\n` +
@@ -179,6 +222,8 @@ async function wrapWithSpawn(
     });
 
     proc.on("close", (code) => {
+      process.removeListener("SIGHUP", gracefulShutdown);
+      process.removeListener("SIGTERM", gracefulShutdown);
       logger.close();
       resolve({
         exitCode: code ?? 0,
