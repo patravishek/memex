@@ -1,6 +1,6 @@
 {
   "name": "@patravishek/memex",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Persistent project memory for AI coding agents. Works with Claude, Cursor, Copilot, Ollama, Groq, and any MCP-compatible tool — free or paid.",
   "main": "dist/cli.js",
   "bin": {

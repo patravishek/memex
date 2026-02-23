@@ -2,7 +2,7 @@
   "name": "memex-vscode",
   "displayName": "Memex",
   "description": "Persistent project memory for AI coding agents. Works with Cursor, Copilot, Claude, Ollama, and any MCP-compatible tool — paid or free.",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "publisher": "patravishek",
   "icon": "images/icon.png",
   "repository": {

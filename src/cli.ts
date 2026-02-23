@@ -32,7 +32,7 @@ import {
   SessionRow,
 } from "./storage/queries.js";
 
-const MEMEX_VERSION = "0.4.5";
+const MEMEX_VERSION = "0.4.6";
 
 // ─── ASCII logo ───────────────────────────────────────────────────────────────
 
@@ -865,6 +865,60 @@ program
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// ─── Star prompt ─────────────────────────────────────────────────────────────
+
+/**
+ * After the 3rd successful session compression, show a one-time prompt asking
+ * the user to star the repo. Uses a global flag file so it only shows once
+ * across all projects on the machine.
+ */
+function maybeShowStarPrompt(projectPath: string): void {
+  const flagFile = path.join(
+    process.env.HOME ?? process.env.USERPROFILE ?? "~",
+    ".memex",
+    "star-prompted"
+  );
+
+  // Already shown on this machine — skip
+  if (fs.existsSync(flagFile)) return;
+
+  // Count total finalized sessions in this project
+  try {
+    const db = getDb(getMemexDir(projectPath));
+    const sessions = listSessions(db, projectPath, 1000);
+    const finalized = sessions.filter((s) => s.ended_at).length;
+    if (finalized < 3) return;
+
+    // Show the prompt
+    console.log(
+      chalk.dim("\n  ──────────────────────────────────────────────────")
+    );
+    console.log(
+      chalk.bold("  Enjoying Memex?") +
+        chalk.dim(" You've had " + finalized + " sessions — that's great!")
+    );
+    console.log(
+      chalk.dim("  A ⭐ on GitHub helps others discover it:\n")
+    );
+    console.log(
+      chalk.cyan("  https://github.com/patravishek/memex") +
+        chalk.dim("  (takes 2 seconds)")
+    );
+    console.log(
+      chalk.dim("  ──────────────────────────────────────────────────\n")
+    );
+
+    // Mark as shown so it never appears again
+    const flagDir = path.dirname(flagFile);
+    if (!fs.existsSync(flagDir)) fs.mkdirSync(flagDir, { recursive: true });
+    fs.writeFileSync(flagFile, new Date().toISOString(), "utf-8");
+  } catch {
+    // Never let this break the main flow
+  }
+}
+
+// ─── Pending compression helpers ─────────────────────────────────────────────
+
 /** Path where we park a "needs compression" marker on abrupt shutdown. */
 function pendingCompressionPath(projectPath: string): string {
   return path.join(getMemexDir(projectPath), "pending-compression.json");
@@ -1002,6 +1056,8 @@ async function runCompression(
         chalk.dim(`, gotchas: ${updated.gotchas.length}`) +
         chalk.dim(`, conversation turns saved: ${turns.length}\n`)
     );
+
+    maybeShowStarPrompt(projectPath);
   } catch (err) {
     const reason = (err as Error).message;
     spinner.fail(chalk.red("  Compression failed — raw session log preserved"));
