@@ -4,8 +4,21 @@
 
 <h1 align="center">Memex</h1>
 
-<p align="center">Persistent, agent-agnostic memory for AI coding tools.</p>
-<p align="center">Works across Claude, Cursor, Copilot, Gemini — and any MCP-compatible agent.</p>
+<p align="center"><strong>The memory layer for AI coding tools.</strong></p>
+<p align="center">Works with Claude, Cursor, Copilot, Ollama, Gemini — any agent, paid or free.</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@patravishek/memex"><img src="https://img.shields.io/npm/v/@patravishek/memex?color=a855f7&label=npm" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@patravishek/memex"><img src="https://img.shields.io/npm/dm/@patravishek/memex?color=6366f1&label=installs" alt="npm downloads" /></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=patravishek.memex-vscode"><img src="https://img.shields.io/visual-studio-marketplace/v/patravishek.memex-vscode?color=a855f7&label=VS%20Code" alt="VS Code extension" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT license" /></a>
+</p>
+
+---
+
+Every AI coding session starts with the same problem: the agent has no idea who you are, what you're building, or what you decided last week. You re-explain the stack. You paste context. You re-discover the same gotchas. Every. Single. Time.
+
+Memex fixes this. It gives every AI agent — Claude, Cursor, Copilot, a local Ollama model, anything — **persistent memory of your project.** One session builds on the last. Decisions are remembered. Mistakes aren't repeated. Context follows the project, not the agent.
 
 ```
     Day 1                              Day 2
@@ -21,31 +34,28 @@
   [Memex saves everything]          Back in flow in 10 seconds.
 ```
 
-No more re-explaining your project. No more lost momentum. Switch between Claude CLI, Cursor Agent, Copilot, or any MCP-compatible tool — they all share the same memory. Start a feature in Claude, continue it in Cursor, hand it off to a teammate using a different tool entirely. The context follows the project, not the agent.
+**Switch tools mid-project without losing context.** Start a feature in Claude CLI, continue it in Cursor, pick it up tomorrow with a free Ollama model. The memory lives in your project — not in any one tool.
 
 ---
 
 ## Install
 
 ```bash
-# npm
 npm install -g @patravishek/memex
-
-# pnpm
-pnpm add -g @patravishek/memex
 ```
 
-Then add your API key to `~/.zshrc`:
+Memex uses a small AI call at the end of each session to compress the transcript into structured memory. You can use **any** of these — paid or free:
 
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-```
+| Provider | How to set up | Cost |
+|---|---|---|
+| **Ollama** (local) | `ollama pull llama3.1` then `export OLLAMA_BASE_URL=http://localhost:11434` | Free, offline |
+| **Groq** | [console.groq.com](https://console.groq.com) → free API key → `export GROQ_API_KEY=...` | Free tier |
+| **Google Gemini** | [aistudio.google.com](https://aistudio.google.com) → free API key → `export GEMINI_API_KEY=...` | Free tier |
+| **Anthropic** | `export ANTHROPIC_API_KEY=sk-ant-...` | Paid |
+| **OpenAI** | `export OPENAI_API_KEY=sk-...` | Paid |
+| **LiteLLM proxy** | `export LITELLM_API_KEY=... LITELLM_BASE_URL=...` | Your pricing |
 
-```bash
-source ~/.zshrc
-```
-
-That's the entire setup.
+Add your chosen key to `~/.zshrc` and run `source ~/.zshrc`. That's the entire setup.
 
 ---
 
@@ -161,29 +171,59 @@ npm install && npm run build && npm link
 
 ## Configuration
 
-Memex reads API keys from your **shell environment** — no config file required. Add to `~/.zshrc` and reload:
+Memex reads everything from your **shell environment** — no config file required.
+
+### Free: Ollama (local, offline, no account needed)
+
+Run any open-source model locally. No API key, no usage limits, works offline.
 
 ```bash
-source ~/.zshrc
+# Install Ollama from https://ollama.com, then:
+ollama pull llama3.1        # or mistral, codellama, deepseek-coder, etc.
+
+export OLLAMA_BASE_URL=http://localhost:11434
+export LITELLM_MODEL=ollama/llama3.1
 ```
 
-### Anthropic (default)
+Works on Apple Silicon Macs without a GPU. Recommended model: `llama3.1` or `deepseek-coder-v2`.
+
+### Free: Groq (fast, free API tier)
+
+[Groq](https://console.groq.com) offers a generous free tier with very fast inference on Llama and Mixtral.
+
+```bash
+export LITELLM_BASE_URL=https://api.groq.com/openai/v1
+export LITELLM_API_KEY=gsk_...          # from console.groq.com
+export LITELLM_MODEL=groq/llama-3.1-8b-instant
+```
+
+### Free: Google Gemini (free API tier)
+
+[Google AI Studio](https://aistudio.google.com) offers free access to Gemini 1.5 Flash.
+
+```bash
+export LITELLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+export LITELLM_API_KEY=AIza...          # from aistudio.google.com
+export LITELLM_MODEL=gemini/gemini-1.5-flash
+```
+
+### Paid: Anthropic
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-export ANTHROPIC_MODEL=claude-3-haiku-20240307   # optional
+export ANTHROPIC_MODEL=claude-3-haiku-20240307   # optional, haiku is cheapest
 ```
 
-### OpenAI
+### Paid: OpenAI
 
 ```bash
 export OPENAI_API_KEY=sk-...
 export OPENAI_MODEL=gpt-4o-mini   # optional
 ```
 
-### LiteLLM (enterprise proxy)
+### Enterprise: LiteLLM proxy
 
-Many enterprises route AI traffic through a [LiteLLM](https://docs.litellm.ai) proxy for centralised key management, cost tracking, and model governance. Memex supports this natively — your session data never leaves the corporate network.
+Route through your corporate proxy for centralised key management. Session data never leaves your network.
 
 ```bash
 export LITELLM_API_KEY=your_litellm_key
@@ -196,7 +236,7 @@ export LITELLM_TEAM_ID=your_team_id   # optional
 
 Memex picks the provider automatically based on what's set:
 
-1. **LiteLLM** — if `LITELLM_API_KEY` + `LITELLM_BASE_URL` are both set
+1. **LiteLLM / Ollama / Groq / Gemini** — if `LITELLM_API_KEY` + `LITELLM_BASE_URL` are both set
 2. **Anthropic** — if `ANTHROPIC_API_KEY` is set
 3. **OpenAI** — if `OPENAI_API_KEY` is set
 
