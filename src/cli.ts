@@ -32,7 +32,7 @@ import {
   SessionRow,
 } from "./storage/queries.js";
 
-const MEMEX_VERSION = "0.4.4";
+const MEMEX_VERSION = "0.4.5";
 
 // ─── ASCII logo ───────────────────────────────────────────────────────────────
 
@@ -151,6 +151,8 @@ program
       console.log(chalk.dim("  No memory found — initialized fresh.\n"));
     }
 
+    await checkAndRunPendingCompression(projectPath);
+
     const db = getDb(memexDir);
     const sessionId = createSession(db, projectPath, command);
     const logger = new SessionLogger(memexDir);
@@ -161,6 +163,13 @@ program
         command,
         args,
         cwd: projectPath,
+      });
+
+      // Write a pending marker before async compression — removed on success
+      writePendingCompression(projectPath, {
+        rawLogPath: result.rawLogPath,
+        logPath: result.logPath,
+        sessionId,
       });
 
       await runCompression(
@@ -344,6 +353,8 @@ program
       }
     }
 
+    await checkAndRunPendingCompression(projectPath);
+
     const db = getDb(memexDir);
     const sessionId = createSession(db, projectPath, command);
     const logger = new SessionLogger(memexDir);
@@ -358,6 +369,13 @@ program
           ? `Please read the file ${resumeFilePath} to restore context from our previous sessions, then ask how to continue.`
           : undefined,
         injectDelayMs: 3000,
+      });
+
+      // Write a pending marker before async compression — removed on success
+      writePendingCompression(projectPath, {
+        rawLogPath: result.rawLogPath,
+        logPath: result.logPath,
+        sessionId,
       });
 
       await runCompression(
@@ -759,38 +777,65 @@ program
   .option("-p, --project <path>", "Project directory", process.cwd())
   .action(async (options) => {
     const projectPath = path.resolve(options.project);
-    const sessionsDir = path.join(getMemexDir(projectPath), "sessions");
+    const memexDir = getMemexDir(projectPath);
+    const sessionsDir = path.join(memexDir, "sessions");
 
     if (!fs.existsSync(sessionsDir)) {
       console.log(chalk.yellow("\n  No sessions found to compress.\n"));
       return;
     }
 
-    const files = fs
+    // Find the latest raw log file (best quality transcript)
+    const rawFiles = fs
+      .readdirSync(sessionsDir)
+      .filter((f) => f.endsWith("-raw.txt"))
+      .sort();
+
+    const jsonlFiles = fs
       .readdirSync(sessionsDir)
       .filter((f) => f.endsWith(".jsonl"))
       .sort();
 
-    if (files.length === 0) {
+    if (rawFiles.length === 0 && jsonlFiles.length === 0) {
       console.log(chalk.yellow("\n  No session logs found.\n"));
       return;
     }
 
-    const latest = path.join(sessionsDir, files[files.length - 1]);
-    const lines = fs.readFileSync(latest, "utf-8").trim().split("\n");
-    const transcript = lines
-      .map((l) => {
-        try {
-          const e = JSON.parse(l);
-          return `[${e.source.toUpperCase()}]: ${e.text}`;
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean)
-      .join("\n");
+    // Prefer raw log (from script recording); fall back to jsonl
+    let transcript = "";
+    let logPath = "";
 
-    await runCompression(transcript, projectPath, latest);
+    if (rawFiles.length > 0) {
+      const rawLogPath = path.join(sessionsDir, rawFiles[rawFiles.length - 1]);
+      transcript = parseRawLog(rawLogPath);
+      // Corresponding jsonl path (for logPath reference)
+      logPath = rawLogPath.replace("-raw.txt", ".jsonl");
+      if (!fs.existsSync(logPath)) logPath = rawLogPath;
+    }
+
+    if (!transcript && jsonlFiles.length > 0) {
+      logPath = path.join(sessionsDir, jsonlFiles[jsonlFiles.length - 1]);
+      const lines = fs.readFileSync(logPath, "utf-8").trim().split("\n");
+      transcript = lines
+        .map((l) => {
+          try {
+            const e = JSON.parse(l);
+            return `[${e.source.toUpperCase()}]: ${e.text}`;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    // Look up the latest non-finalized session in the DB to finalize it
+    const db = getDb(memexDir);
+    const sessions = listSessions(db, projectPath, 1);
+    const latestSession = sessions[0];
+    const sessionId = latestSession && !latestSession.ended_at ? latestSession.id : undefined;
+
+    await runCompression(transcript, projectPath, logPath, [], sessionId);
   });
 
 // ─── memex prune ─────────────────────────────────────────────────────────────
@@ -819,6 +864,96 @@ program
   });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Path where we park a "needs compression" marker on abrupt shutdown. */
+function pendingCompressionPath(projectPath: string): string {
+  return path.join(getMemexDir(projectPath), "pending-compression.json");
+}
+
+interface PendingCompression {
+  rawLogPath: string;
+  logPath: string;
+  sessionId: number;
+}
+
+/**
+ * Write the pending-compression marker synchronously.
+ * Called immediately after createSession so even a SIGKILL can't lose the
+ * session — the next `memex resume` will pick it up.
+ */
+function writePendingCompression(projectPath: string, data: PendingCompression): void {
+  try {
+    fs.writeFileSync(pendingCompressionPath(projectPath), JSON.stringify(data), "utf-8");
+  } catch {
+    // ignore — filesystem unavailable
+  }
+}
+
+function clearPendingCompression(projectPath: string): void {
+  try {
+    fs.rmSync(pendingCompressionPath(projectPath), { force: true });
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * If a previous session was interrupted before compression, compress it now.
+ * Called at the start of every `start` and `resume` action.
+ */
+async function checkAndRunPendingCompression(projectPath: string): Promise<void> {
+  const pendingPath = pendingCompressionPath(projectPath);
+  if (!fs.existsSync(pendingPath)) return;
+
+  let pending: PendingCompression;
+  try {
+    pending = JSON.parse(fs.readFileSync(pendingPath, "utf-8")) as PendingCompression;
+  } catch {
+    fs.rmSync(pendingPath, { force: true });
+    return;
+  }
+
+  if (!fs.existsSync(pending.rawLogPath)) {
+    fs.rmSync(pendingPath, { force: true });
+    return;
+  }
+
+  console.log(chalk.yellow("\n  Recovering interrupted session from last run...\n"));
+
+  const transcript = parseRawLog(pending.rawLogPath);
+  if (transcript && transcript.trim().length >= 50) {
+    await runCompression(transcript, projectPath, pending.logPath, [], pending.sessionId);
+  } else {
+    // Session too short — just finalize it without a summary
+    try {
+      const db = getDb(getMemexDir(projectPath));
+      finalizeSession(db, pending.sessionId, "Session too short to compress.", pending.logPath, []);
+    } catch {
+      // ignore
+    }
+  }
+
+  clearPendingCompression(projectPath);
+}
+
+/** Re-parse a raw script log from disk (used for recovery). */
+function parseRawLog(rawLogPath: string): string {
+  if (!fs.existsSync(rawLogPath)) return "";
+  try {
+    const raw = fs.readFileSync(rawLogPath, "utf-8");
+    return raw
+      .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
+      .replace(/\x1b\[[0-9;]*m/g, "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .replace(/[^\x20-\x7E\n\t]/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  } catch {
+    return "";
+  }
+}
+
 async function runCompression(
   transcript: string,
   projectPath: string,
@@ -828,6 +963,14 @@ async function runCompression(
 ): Promise<void> {
   if (!transcript || transcript.trim().length < 50) {
     console.log(chalk.dim("\n  Session too short to compress.\n"));
+    // Still finalize the session so it shows in history
+    if (sessionId !== undefined) {
+      try {
+        const db = getDb(getMemexDir(projectPath));
+        finalizeSession(db, sessionId, "Session too short to compress.", logPath, []);
+      } catch { /* ignore */ }
+    }
+    clearPendingCompression(projectPath);
     return;
   }
 
@@ -847,6 +990,8 @@ async function runCompression(
       const sessionSummary = updated.recentSessions.at(-1)?.summary ?? "";
       finalizeSession(db, sessionId, sessionSummary, logPath, turns);
     }
+
+    clearPendingCompression(projectPath);
 
     spinner.succeed(
       chalk.green("  Memory updated") +

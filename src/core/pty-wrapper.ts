@@ -16,6 +16,8 @@ export interface WrapResult {
   exitCode: number;
   transcript: string;
   logPath: string;
+  rawLogPath: string;
+  abrupt: boolean;
 }
 
 // Common binary locations — checked in order when shell lookup fails
@@ -105,29 +107,38 @@ async function wrapWithScript(
     });
 
     // ── Graceful signal handling ───────────────────────────────────────────
-    // When a terminal window is closed (or the process receives SIGHUP/SIGTERM),
-    // the default behaviour kills Node before the `close` handler fires —
-    // meaning compression never runs. By registering handlers we:
+    // When a terminal window is closed (SIGHUP), Ctrl+C (SIGINT), or the
+    // parent sends SIGTERM, Node's default is to die immediately — before
+    // the `close` handler fires and compression runs.  We intercept all three:
     //   1. Prevent Node from dying immediately (handler overrides default)
     //   2. Kill the child `script` process so its `close` event fires
     //   3. Let the normal close → compress flow complete before exiting
+    //
+    // SIGPIPE: When the terminal closes, stdout/stderr become broken pipes.
+    // Any write (e.g. ora spinner) raises SIGPIPE which kills Node by default.
+    // Suppressing it lets compression complete silently.
+    process.on("SIGPIPE", () => {});
+
     let finishing = false;
-    const gracefulShutdown = (signal: string) => {
+    let abruptShutdown = false;
+    const gracefulShutdown = () => {
       if (finishing) return;
       finishing = true;
+      abruptShutdown = true;
       try {
         proc.kill("SIGTERM");
       } catch {
         // process may already be dead
       }
-      // Node will exit naturally once the event loop drains after compression
       // Remove listeners so further signals don't re-enter this handler
       process.removeListener("SIGHUP", gracefulShutdown);
       process.removeListener("SIGTERM", gracefulShutdown);
+      process.removeListener("SIGINT", gracefulShutdown);
     };
 
     process.on("SIGHUP", gracefulShutdown);
     process.on("SIGTERM", gracefulShutdown);
+    process.on("SIGINT", gracefulShutdown);
 
     // If injecting a resume prompt, auto-type it via a stdin write after delay
     if (injectFile && options.injectOnReady) {
@@ -150,12 +161,14 @@ async function wrapWithScript(
     proc.on("error", (err) => {
       process.removeListener("SIGHUP", gracefulShutdown);
       process.removeListener("SIGTERM", gracefulShutdown);
+      process.removeListener("SIGINT", gracefulShutdown);
       reject(new Error(`Failed to start session: ${err.message}`));
     });
 
     proc.on("close", (code) => {
       process.removeListener("SIGHUP", gracefulShutdown);
       process.removeListener("SIGTERM", gracefulShutdown);
+      process.removeListener("SIGINT", gracefulShutdown);
 
       // Parse the raw script log into a readable transcript
       const transcript = parseScriptLog(rawLogPath);
@@ -174,6 +187,8 @@ async function wrapWithScript(
         exitCode: code ?? 0,
         transcript,
         logPath: logger.getLogPath(),
+        rawLogPath,
+        abrupt: abruptShutdown,
       });
     });
   });
@@ -199,20 +214,27 @@ async function wrapWithSpawn(
       }
     );
 
+    process.on("SIGPIPE", () => {});
+
     let finishing = false;
+    let abruptShutdown = false;
     const gracefulShutdown = () => {
       if (finishing) return;
       finishing = true;
+      abruptShutdown = true;
       try { proc.kill("SIGTERM"); } catch { /* already dead */ }
       process.removeListener("SIGHUP", gracefulShutdown);
       process.removeListener("SIGTERM", gracefulShutdown);
+      process.removeListener("SIGINT", gracefulShutdown);
     };
     process.on("SIGHUP", gracefulShutdown);
     process.on("SIGTERM", gracefulShutdown);
+    process.on("SIGINT", gracefulShutdown);
 
     proc.on("error", (err) => {
       process.removeListener("SIGHUP", gracefulShutdown);
       process.removeListener("SIGTERM", gracefulShutdown);
+      process.removeListener("SIGINT", gracefulShutdown);
       reject(
         new Error(
           `Could not start "${resolvedCommand}": ${err.message}\n` +
@@ -224,11 +246,14 @@ async function wrapWithSpawn(
     proc.on("close", (code) => {
       process.removeListener("SIGHUP", gracefulShutdown);
       process.removeListener("SIGTERM", gracefulShutdown);
+      process.removeListener("SIGINT", gracefulShutdown);
       logger.close();
       resolve({
         exitCode: code ?? 0,
         transcript: logger.getTranscript(),
         logPath: logger.getLogPath(),
+        rawLogPath: logger.getLogPath(),
+        abrupt: abruptShutdown,
       });
     });
   });

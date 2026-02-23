@@ -79,7 +79,7 @@ cd ~/my-project
 memex start claude
 ```
 
-You work with Claude for a couple of hours. Build some features, make decisions, hit a few problems. When you're done, you close the terminal. Memex quietly saves everything in the background.
+You work with Claude for a couple of hours. Build some features, make decisions, hit a few problems. When you're done, close the terminal — any way you like (Ctrl+C, close the window, just kill it). Memex detects all of these and saves everything before the process fully exits.
 
 **Day 2 — Coming back:**
 
@@ -238,12 +238,21 @@ memex start claude --project /path/to/project
 
 On first run, Memex automatically adds `.memex/` and `.mcp.json` to the project's `.gitignore` so session data is never accidentally committed.
 
-When you exit, you'll see:
+When you exit — whether by typing `exit`, pressing Ctrl+C, or closing the terminal window — you'll see:
 
 ```
 ✔ Memory updated — focus: Implementing the checkout flow
   Pending tasks: 3, gotchas: 1, conversation turns saved: 24
 ```
+
+If the process is killed before compression finishes (e.g., the window is force-closed), Memex writes a recovery marker automatically. The next `memex resume` picks it up:
+
+```
+  Recovering interrupted session from last run...
+✔ Memory updated — focus: Implementing the checkout flow
+```
+
+Nothing is lost.
 
 ---
 
@@ -399,11 +408,13 @@ After this, just run `claude` normally and say "resume from where we left off" �
 
 ### `memex compress`
 
-Manually re-run compression on the latest session. Useful if the session ended unexpectedly.
+Manually re-run compression on the latest session. Useful if you want to force a re-summarize.
 
 ```bash
 memex compress
 ```
+
+In most cases you don't need this — if a session was interrupted (e.g., terminal force-closed), Memex automatically recovers it on the next `memex resume`.
 
 ---
 
@@ -539,7 +550,7 @@ Start feature with Claude CLI          memex resume claude
 
 ## Roadmap
 
-**Current: v0.4.2** — Progressive context injection (tiered, focus-aware, token-budgeted)
+**Current: v0.4.5** — Crash recovery: sessions are never lost even if the terminal is force-closed
 
 See [ROADMAP.md](ROADMAP.md) for what's next — including a local web UI, semantic vector search, and more.
 
