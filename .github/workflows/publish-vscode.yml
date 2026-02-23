@@ -55,7 +55,18 @@ jobs:
 
       - name: Publish to Open VSX
         if: env.OVSX_PAT != ''
-        run: npm run publish-ovsx
         working-directory: packages/memex-vscode
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          for attempt in 1 2 3; do
+            echo "Attempt $attempt..."
+            npm run publish-ovsx && break
+            if [ $attempt -lt 3 ]; then
+              echo "Failed, retrying in 15s..."
+              sleep 15
+            else
+              echo "All attempts failed — Open VSX may be temporarily unavailable."
+              exit 1
+            fi
+          done
