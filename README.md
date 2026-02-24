@@ -569,23 +569,35 @@ Memory lives in `.memex/memex.db` — a local SQLite file that every agent reads
 
 **IDE agents** (MCP tools available on demand):
 
-| Agent | How |
-|---|---|
-| Cursor Agent | Auto-configured via `.cursor/mcp.json` — install the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=patravishek.memex-vscode) or run `memex setup-mcp` |
-| GitHub Copilot | Auto-configured via `.vscode/mcp.json` — same extension |
-| Any MCP client | Run `memex serve --project /path/to/project` |
+| Agent | How | Status |
+|---|---|---|
+| Cursor Agent | Auto-configured via `.cursor/mcp.json` — install the [VS Code extension](https://marketplace.visualstudio.com/items?itemName=patravishek.memex-vscode) or run `memex setup-mcp` | ✅ Verified |
+| OpenAI Codex | Auto-configured via `.vscode/mcp.json` — run `memex setup-mcp` | ✅ Verified |
+| GitHub Copilot | Auto-configured via `.vscode/mcp.json` — same extension | ✅ Verified |
+| Any MCP client | Run `memex serve --project /path/to/project` | ✅ Works |
 
-**The interoperability story:**
+**Starter prompt for IDE agents:**
+
+When you open an IDE agent on a project, paste this once to restore context:
 
 ```
-Start feature with Claude CLI          memex resume claude
-         ↓ session compressed into
-    .memex/memex.db  ←── single source of truth
-         ↑ MCP tools              ↑ MCP tools
-  Cursor Agent              GitHub Copilot
-  get_context()             get_tasks()
-  save_observation()        search_sessions()
+Please call get_context from the memex MCP to load project memory before we start.
 ```
+
+After that the agent has your full project context — current focus, pending tasks, past decisions, gotchas — and you can continue where you left off.
+
+**The interoperability story (verified):**
+
+```
+Day 1: memex start claude      →  work on project in Claude CLI
+                               →  exit: memory compressed to .memex/memex.db
+
+Day 2: Open Codex / Cursor     →  MCP connected automatically
+       "load context from memex"→  get_context() returns everything
+                               →  continue exactly where Claude left off
+```
+
+No re-explaining. No copy-pasting. The context follows the project.
 
 ---
 

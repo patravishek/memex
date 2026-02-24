@@ -149,6 +149,14 @@ For each test case, mark the result:
 | 7.9 | Persists | `memex status` in terminal | Observation from Cursor appears | | |
 | 7.10 | search_sessions | Ask: "search_sessions for stripe" | Returns relevant sessions | | |
 
+### 7C — OpenAI Codex (verified ✅)
+
+| # | Test | Steps | Expected | Result | Notes |
+|---|---|---|---|---|---|
+| 7.11 | Cross-agent context switch | Run `memex start claude`, do work, exit. Open Codex in IDE. | Session compressed to `.memex/memex.db` | ✅ Pass | |
+| 7.12 | get_context via prompt | In Codex: "Please call get_context from the memex MCP to load project memory" | Codex returns full project context from Claude session | ✅ Pass | Must explicitly ask — Codex does not auto-call MCP tools |
+| 7.13 | Context quality | Review what Codex received | Correct focus, tasks, stack from previous Claude session | ✅ Pass | |
+
 ### 7C — GitHub Copilot (VS Code)
 
 | # | Test | Steps | Expected | Result | Notes |
