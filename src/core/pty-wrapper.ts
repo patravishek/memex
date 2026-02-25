@@ -10,6 +10,12 @@ export interface WrapOptions {
   cwd?: string;
   injectOnReady?: string;
   injectDelayMs?: number;
+  /** How often (ms) to call onSnapshot with the current raw log path. */
+  snapshotIntervalMs?: number;
+  /** Called on each snapshot interval tick with the raw log path being written. */
+  onSnapshot?: (rawLogPath: string) => Promise<void>;
+  /** Called immediately after the raw log path is determined, so callers can write active-session.json. */
+  onSessionStart?: (rawLogPath: string, logPath: string) => void;
 }
 
 export interface WrapResult {
@@ -106,6 +112,21 @@ async function wrapWithScript(
       },
     });
 
+    // Notify caller of the raw log path as soon as we know it (before the agent starts)
+    if (options.onSessionStart) {
+      options.onSessionStart(rawLogPath, logger.getLogPath());
+    }
+
+    // ── Periodic snapshot interval ─────────────────────────────────────────
+    let snapshotTimer: ReturnType<typeof setInterval> | undefined;
+    if (options.snapshotIntervalMs && options.onSnapshot) {
+      snapshotTimer = setInterval(() => {
+        if (options.onSnapshot && fs.existsSync(rawLogPath)) {
+          options.onSnapshot(rawLogPath).catch(() => {});
+        }
+      }, options.snapshotIntervalMs);
+    }
+
     // ── Graceful signal handling ───────────────────────────────────────────
     // When a terminal window is closed (SIGHUP), Ctrl+C (SIGINT), or the
     // parent sends SIGTERM, Node's default is to die immediately — before
@@ -170,6 +191,8 @@ async function wrapWithScript(
       process.removeListener("SIGTERM", gracefulShutdown);
       process.removeListener("SIGINT", gracefulShutdown);
 
+      if (snapshotTimer) clearInterval(snapshotTimer);
+
       // Parse the raw script log into a readable transcript
       const transcript = parseScriptLog(rawLogPath);
 
@@ -214,6 +237,19 @@ async function wrapWithSpawn(
       }
     );
 
+    if (options.onSessionStart) {
+      options.onSessionStart(logger.getLogPath(), logger.getLogPath());
+    }
+
+    let snapshotTimer: ReturnType<typeof setInterval> | undefined;
+    if (options.snapshotIntervalMs && options.onSnapshot) {
+      snapshotTimer = setInterval(() => {
+        if (options.onSnapshot) {
+          options.onSnapshot(logger.getLogPath()).catch(() => {});
+        }
+      }, options.snapshotIntervalMs);
+    }
+
     process.on("SIGPIPE", () => {});
 
     let finishing = false;
@@ -247,6 +283,7 @@ async function wrapWithSpawn(
       process.removeListener("SIGHUP", gracefulShutdown);
       process.removeListener("SIGTERM", gracefulShutdown);
       process.removeListener("SIGINT", gracefulShutdown);
+      if (snapshotTimer) clearInterval(snapshotTimer);
       logger.close();
       resolve({
         exitCode: code ?? 0,

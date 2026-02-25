@@ -10,6 +10,7 @@ import {
   buildResumeContent,
   ContextOptions,
 } from "./context-builder.js";
+import { getGitContext, formatGitContext } from "../core/git.js";
 
 // ─── <memex:skip> filter ─────────────────────────────────────────────────────
 
@@ -38,7 +39,8 @@ resume work on this project without losing context. Output must always be valid 
 export async function compressSession(
   transcript: string,
   projectPath: string,
-  logFile: string
+  logFile: string,
+  options: { partial?: boolean } = {}
 ): Promise<ProjectMemory> {
   const existing = loadMemory(projectPath) ?? initMemory(projectPath);
 
@@ -52,6 +54,20 @@ export async function compressSession(
 
   const existingFocusHistory = existing.focusHistory ?? [];
 
+  // Append git context if available
+  const gitCtx = getGitContext(projectPath);
+  const gitSection = gitCtx
+    ? `\n--- GIT CONTEXT ---\n${formatGitContext(gitCtx)}\n--- END GIT CONTEXT ---\n`
+    : "";
+
+  // Partial snapshots don't add a new recentSessions entry — session is still ongoing
+  const recentSessionsInstruction = options.partial
+    ? `Keep recentSessions unchanged: ${JSON.stringify(existing.recentSessions ?? [])}`
+    : `Add a new entry to recentSessions:
+{ "date": "${new Date().toISOString()}", "summary": "2-3 sentence summary of this session", "logFile": "${logFile}" }
+
+Keep recentSessions to the last 5 entries only.`;
+
   const response = await chat(
     [
       {
@@ -59,7 +75,7 @@ export async function compressSession(
         content: `Analyze this conversation transcript and update the project memory.
 
 ${existingContext}
-
+${gitSection}
 --- TRANSCRIPT ---
 ${safeTranscript.slice(-12000)}
 --- END TRANSCRIPT ---
@@ -90,11 +106,11 @@ IMPORTANT for currentFocus and focusHistory:
 - If currentFocus changed from "${existing.currentFocus ?? ""}", add the old value to focusHistory (if not already present).
 - Existing focusHistory to carry forward: ${JSON.stringify(existingFocusHistory)}
 - Keep focusHistory to the last 10 entries only.
+${gitCtx && gitCtx.changedFiles.length > 0
+  ? `- The git context shows changed files — consider adding relevant ones to importantFiles if not already present.`
+  : ""}
 
-Add a new entry to recentSessions:
-{ "date": "${new Date().toISOString()}", "summary": "2-3 sentence summary of this session", "logFile": "${logFile}" }
-
-Keep recentSessions to the last 5 entries only.
+${recentSessionsInstruction}
 Return ONLY the JSON, no markdown, no explanation.`,
       },
     ],
@@ -143,6 +159,18 @@ Return ONLY the JSON, no markdown, no explanation.`,
     // Re-throw so the CLI can surface the real reason to the user
     throw new Error(reason);
   }
+}
+
+/**
+ * Partial compression: update memory mid-session without finalizing the session
+ * or adding a new recentSessions entry.  Used by auto-snapshot and `memex snapshot`.
+ */
+export async function compressSnapshot(
+  transcript: string,
+  projectPath: string,
+  logFile: string
+): Promise<ProjectMemory> {
+  return compressSession(transcript, projectPath, logFile, { partial: true });
 }
 
 /**

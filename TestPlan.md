@@ -4,7 +4,7 @@
 >
 > **Version under test:** CLI `v0.4.6` · Extension `v0.5.7`  
 > **Tester:** @patravishek  
-> **Status:** 🔲 Not started
+> **Status:** ✅ Complete — all sections passed
 
 ---
 
@@ -24,14 +24,14 @@ For each test case, mark the result:
 
 | # | Test | Command | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 1.1 | Install check | `memex --version` | `0.4.6` | | |
-| 1.2 | Init a project | `cd /tmp && mkdir memex-test && cd memex-test && memex init` | "Project initialized" message, `.memex/memex.db` created | | |
-| 1.3 | Status on empty project | `memex status` | Shows empty memory with project path | | |
-| 1.4 | Status JSON output | `memex status --json` | Valid JSON with memory fields | | |
-| 1.5 | Set focus | `memex focus "testing memex"` | "Focus updated" | | |
-| 1.6 | List focus | `memex focus --list` | Shows "testing memex" as current | | |
-| 1.7 | History empty | `memex history` | "No sessions recorded yet" | | |
-| 1.8 | Forget | `memex forget` | "Memory cleared" | | |
+| 1.1 | Install check | `memex --version` | `0.4.6` | ✅ Pass | |
+| 1.2 | Init a project | `cd /tmp && mkdir memex-test && cd memex-test && memex init` | "Project initialized" message, `.memex/memex.db` created | ✅ Pass | |
+| 1.3 | Status on empty project | `memex status` | Shows empty memory with project path | ✅ Pass | |
+| 1.4 | Status JSON output | `memex status --json` | Valid JSON with memory fields | ✅ Pass | |
+| 1.5 | Set focus | `memex focus "testing memex"` | "Focus updated" | ✅ Pass | |
+| 1.6 | List focus | `memex focus --list` | Shows "testing memex" as current | ✅ Pass | |
+| 1.7 | History empty | `memex history` | "No sessions recorded yet" | ✅ Pass | |
+| 1.8 | Forget | `memex forget` | "Memory cleared" | ✅ Pass | |
 
 ---
 
@@ -43,28 +43,28 @@ For each test case, mark the result:
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 2.1 | Start session | `cd /tmp/memex-test && memex start bash` | Shell opens inside memex wrapper | | |
-| 2.2 | Generate content | Type: `echo "I am building a checkout flow with Stripe"` then `exit` | Session ends, compression runs | | |
-| 2.3 | Compression output | After exit | "✔ Memory updated — focus: ..." shown | | |
-| 2.4 | History shows session | `memex history` | Session #1 listed with summary | | |
-| 2.5 | Status updated | `memex status` | `currentFocus` reflects what was discussed | | |
-| 2.6 | Resume injects context | `memex resume bash` | Context printed before bash starts | | |
+| 2.1 | Start session | `cd /tmp/memex-test && memex start bash` | Shell opens inside memex wrapper | ✅ Pass | |
+| 2.2 | Generate content | Type: `echo "I am building a checkout flow with Stripe"` then `exit` | Session ends, compression runs | ✅ Pass | |
+| 2.3 | Compression output | After exit | "✔ Memory updated — focus: ..." shown | ✅ Pass | |
+| 2.4 | History shows session | `memex history` | Session #1 listed with summary | ✅ Pass | |
+| 2.5 | Status updated | `memex status` | `currentFocus` reflects what was discussed | ✅ Pass | |
+| 2.6 | Resume injects context | `memex resume bash` | Context printed before bash starts | ✅ Pass | |
 
 ### 2B — Abrupt exit (crash recovery)
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 2.7 | Close terminal with X | Start `memex start bash`, type a few commands, **close the terminal window** | | | |
-| 2.8 | Recovery on next run | Open new terminal, `cd /tmp/memex-test && memex resume bash` | "Recovering interrupted session from last run..." shown before starting | | |
-| 2.9 | Ctrl+C exit | Start session, press `Ctrl+C` | Compression runs, session saved | | |
-| 2.10 | Pending file cleaned up | After successful recovery | `.memex/pending-compression.json` deleted | | |
+| 2.7 | Close terminal with X | Start `memex start bash`, type a few commands, **close the terminal window** | Session ends abruptly, pending marker written | ✅ Pass | |
+| 2.8 | Recovery on next run | Open new terminal, `cd /tmp/memex-test && memex resume bash` | "Recovering interrupted session from last run..." shown before starting | ✅ Pass | |
+| 2.9 | Ctrl+C exit | Start session, press `Ctrl+C` | Compression runs, session saved | ✅ Pass | |
+| 2.10 | Pending file cleaned up | After successful recovery | `.memex/pending-compression.json` deleted | ✅ Pass | |
 
 ### 2C — Short session
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 2.11 | Too-short session | Start `memex start bash`, immediately `exit` | "Session too short to compress" | | |
-| 2.12 | Still appears in history | `memex history` | Session shows as "no summary" but listed | | |
+| 2.11 | Too-short session | Start `memex start bash`, immediately `exit` | "Session too short to compress" | ✅ Pass | |
+| 2.12 | Still appears in history | `memex history` | Session shows as "no summary" but listed | ✅ Pass | |
 
 ---
 
@@ -72,14 +72,14 @@ For each test case, mark the result:
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 3.1 | Start with Claude | `memex start claude` | Claude launches, session recorded | | |
-| 3.2 | Compression on exit | Type `exit` in Claude | Memory updated on exit | | |
-| 3.3 | Resume with MCP | `memex resume claude` | CLAUDE.md hint injected + `.mcp.json` written | | |
-| 3.4 | MCP tools available | Ask Claude: "use get_context tool" | Claude returns project memory | | |
-| 3.5 | save_observation | Ask Claude: "use save_observation to save: Stripe webhook must be idempotent (type: gotcha)" | Observation saved | | |
-| 3.6 | Observation in status | `memex status` | Gotcha appears in output | | |
-| 3.7 | Focus updated | Ask Claude to work on something, exit | `currentFocus` updated to reflect end-of-session topic | | |
-| 3.8 | Resume restores | Next `memex resume claude` | Claude acknowledges previous session | | |
+| 3.1 | Start with Claude | `memex start claude` | Claude launches, session recorded | ✅ Pass | |
+| 3.2 | Compression on exit | Type `exit` in Claude | Memory updated on exit | ✅ Pass | |
+| 3.3 | Resume with MCP | `memex resume claude` | CLAUDE.md hint injected + `.mcp.json` written | ✅ Pass | |
+| 3.4 | MCP tools available | Ask Claude: "use get_context tool" | Claude returns project memory | ✅ Pass | |
+| 3.5 | save_observation | Ask Claude: "use save_observation to save: Stripe webhook must be idempotent (type: gotcha)" | Observation saved | ✅ Pass | |
+| 3.6 | Observation in status | `memex status` | Gotcha appears in output | ✅ Pass | |
+| 3.7 | Focus updated | Ask Claude to work on something, exit | `currentFocus` updated to reflect end-of-session topic | ✅ Pass | |
+| 3.8 | Resume restores | Next `memex resume claude` | Claude acknowledges previous session | ✅ Pass | |
 
 ---
 
@@ -89,11 +89,11 @@ For each test case, mark the result:
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 4.1 | Start with Aider | `memex start aider` | Aider launches inside memex | | |
-| 4.2 | Session recorded | Work briefly, exit | Raw log created in `.memex/sessions/` | | |
-| 4.3 | Compression | After exit | "✔ Memory updated" shown | | |
-| 4.4 | Resume | `memex resume aider` | Context injected via RESUME.md | | |
-| 4.5 | History | `memex history` | Aider session listed with agent=aider | | |
+| 4.1 | Start with Aider | `memex start aider` | Aider launches inside memex | ✅ Pass | |
+| 4.2 | Session recorded | Work briefly, exit | Raw log created in `.memex/sessions/` | ✅ Pass | |
+| 4.3 | Compression | After exit | "✔ Memory updated" shown | ✅ Pass | |
+| 4.4 | Resume | `memex resume aider` | Context injected via RESUME.md | ✅ Pass | |
+| 4.5 | History | `memex history` | Aider session listed with agent=aider | ✅ Pass | |
 
 ---
 
@@ -103,12 +103,12 @@ For each test case, mark the result:
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 5.1 | Ollama running | `ollama serve` (in separate terminal) | Ollama API available at localhost:11434 | | |
-| 5.2 | Configure memex | `export LITELLM_BASE_URL=http://localhost:11434` `export LITELLM_MODEL=ollama/llama3.1` | Env vars set | | |
-| 5.3 | Start session | `memex start "ollama run llama3.1"` | Ollama interactive session starts | | |
-| 5.4 | Compression uses Ollama | Exit session | Compression runs using local model (no API call) | | |
-| 5.5 | Memory quality | `memex status` | Memory fields populated (may be lower quality than Claude) | | |
-| 5.6 | Resume | `memex resume "ollama run llama3.1"` | Context injected | | |
+| 5.1 | Ollama running | `ollama serve` (in separate terminal) | Ollama API available at localhost:11434 | ✅ Pass | |
+| 5.2 | Configure memex | `export LITELLM_BASE_URL=http://localhost:11434` `export LITELLM_MODEL=ollama/llama3.1` | Env vars set | ✅ Pass | |
+| 5.3 | Start session | `memex start "ollama run llama3.1"` | Ollama interactive session starts | ✅ Pass | |
+| 5.4 | Compression uses Ollama | Exit session | Compression runs using local model (no API call) | ✅ Pass | |
+| 5.5 | Memory quality | `memex status` | Memory fields populated (may be lower quality than Claude) | ✅ Pass | |
+| 5.6 | Resume | `memex resume "ollama run llama3.1"` | Context injected | ✅ Pass | |
 
 ---
 
@@ -118,10 +118,10 @@ For each test case, mark the result:
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 6.1 | Configure | `export LITELLM_BASE_URL=https://api.groq.com/openai/v1` `export LITELLM_API_KEY=gsk_...` `export LITELLM_MODEL=groq/llama-3.1-8b-instant` | Env vars set | | |
-| 6.2 | Test compression | Run a bash session and exit | Compression uses Groq API | | |
-| 6.3 | Speed | Note how long compression takes | Should be faster than Anthropic | | |
-| 6.4 | Memory quality | `memex status` | Memory populated | | |
+| 6.1 | Configure | `export LITELLM_BASE_URL=https://api.groq.com/openai/v1` `export LITELLM_API_KEY=gsk_...` `export LITELLM_MODEL=groq/llama-3.1-8b-instant` | Env vars set | ✅ Pass | |
+| 6.2 | Test compression | Run a bash session and exit | Compression uses Groq API | ✅ Pass | |
+| 6.3 | Speed | Note how long compression takes | Should be faster than Anthropic | ✅ Pass | |
+| 6.4 | Memory quality | `memex status` | Memory populated | ✅ Pass | |
 
 ---
 
@@ -133,21 +133,21 @@ For each test case, mark the result:
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 7.1 | Start MCP server | `memex serve --project /tmp/memex-test` | Server starts (no output — stdio transport) | | |
-| 7.2 | setup-mcp | `cd ~/your-project && memex setup-mcp` | `.cursor/mcp.json` and `.vscode/mcp.json` written | | |
-| 7.3 | Global MCP | `memex setup-mcp --global` | `~/.claude/mcp.json` written | | |
+| 7.1 | Start MCP server | `memex serve --project /tmp/memex-test` | Server starts (no output — stdio transport) | ✅ Pass | |
+| 7.2 | setup-mcp | `cd ~/your-project && memex setup-mcp` | `.cursor/mcp.json` and `.vscode/mcp.json` written | ✅ Pass | |
+| 7.3 | Global MCP | `memex setup-mcp --global` | `~/.claude/mcp.json` written | ✅ Pass | |
 
 ### 7B — Cursor Agent
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 7.4 | MCP loads | Open project in Cursor, check MCP panel | memex server shown as connected | | |
-| 7.5 | get_context | Ask Cursor Agent: "call get_context" | Returns project memory | | |
-| 7.6 | get_tasks | Ask: "call get_tasks" | Returns pending tasks | | |
-| 7.7 | get_gotchas | Ask: "call get_gotchas" | Returns gotchas | | |
-| 7.8 | save_observation | Ask: "use save_observation to save this decision: using SQLite over Postgres for simplicity" | Observation saved | | |
-| 7.9 | Persists | `memex status` in terminal | Observation from Cursor appears | | |
-| 7.10 | search_sessions | Ask: "search_sessions for stripe" | Returns relevant sessions | | |
+| 7.4 | MCP loads | Open project in Cursor, check MCP panel | memex server shown as connected | ✅ Pass | |
+| 7.5 | get_context | Ask Cursor Agent: "call get_context" | Returns project memory | ✅ Pass | |
+| 7.6 | get_tasks | Ask: "call get_tasks" | Returns pending tasks | ✅ Pass | |
+| 7.7 | get_gotchas | Ask: "call get_gotchas" | Returns gotchas | ✅ Pass | |
+| 7.8 | save_observation | Ask: "use save_observation to save this decision: using SQLite over Postgres for simplicity" | Observation saved | ✅ Pass | |
+| 7.9 | Persists | `memex status` in terminal | Observation from Cursor appears | ✅ Pass | |
+| 7.10 | search_sessions | Ask: "search_sessions for stripe" | Returns relevant sessions | ✅ Pass | |
 
 ### 7C — OpenAI Codex (verified ✅)
 
@@ -157,13 +157,13 @@ For each test case, mark the result:
 | 7.12 | get_context via prompt | In Codex: "Please call get_context from the memex MCP to load project memory" | Codex returns full project context from Claude session | ✅ Pass | Must explicitly ask — Codex does not auto-call MCP tools |
 | 7.13 | Context quality | Review what Codex received | Correct focus, tasks, stack from previous Claude session | ✅ Pass | |
 
-### 7C — GitHub Copilot (VS Code)
+### 7D — GitHub Copilot (VS Code)
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 7.11 | MCP loads | Open project in VS Code, check `.vscode/mcp.json` exists | File present with memex config | | |
-| 7.12 | Copilot Chat | Ask in Copilot Chat: "#get_context" | Returns project memory | | |
-| 7.13 | save_observation | Use `#save_observation` from Copilot | Saves to memex.db | | |
+| 7.11 | MCP loads | Open project in VS Code, check `.vscode/mcp.json` exists | File present with memex config | ✅ Pass | |
+| 7.12 | Copilot Chat | Ask in Copilot Chat: "#get_context" | Returns project memory | ✅ Pass | |
+| 7.13 | save_observation | Use `#save_observation` from Copilot | Saves to memex.db | ✅ Pass | |
 
 ---
 
@@ -171,16 +171,16 @@ For each test case, mark the result:
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 8.1 | Extension installs | Install from marketplace | Memex icon appears in activity bar | | |
-| 8.2 | Empty state | Open project without memex | "No memory yet" + "Initialize Project" button | | |
-| 8.3 | Init button | Click "Initialize Project" | Project initialized, panel refreshes | | |
-| 8.4 | Memory panel | Open project with existing memory | Shows focus, tasks, gotchas, last session | | |
-| 8.5 | Auto-refresh | Run `memex compress` in terminal | Panel updates within ~1 second | | |
-| 8.6 | Save to Memex | Select text → right-click → "Save to Memex" | Type picker shown, saved to memory | | |
-| 8.7 | Command palette | Cmd+Shift+P → "Save to Memex" | Input box shown | | |
-| 8.8 | Setup MCP button | Click plug icon in panel | `.cursor/mcp.json` written | | |
-| 8.9 | Not installed state | Extension active but `memex` CLI not in PATH | "Memex CLI not found" + install instructions | | |
-| 8.10 | Star prompt | After 3rd activation | "Enjoying Memex?" notification shown once | | |
+| 8.1 | Extension installs | Install from marketplace | Memex icon appears in activity bar | ✅ Pass | |
+| 8.2 | Empty state | Open project without memex | "No memory yet" + "Initialize Project" button | ✅ Pass | |
+| 8.3 | Init button | Click "Initialize Project" | Project initialized, panel refreshes | ✅ Pass | |
+| 8.4 | Memory panel | Open project with existing memory | Shows focus, tasks, gotchas, last session | ✅ Pass | |
+| 8.5 | Auto-refresh | Run `memex compress` in terminal | Panel updates within ~1 second | ✅ Pass | |
+| 8.6 | Save to Memex | Select text → right-click → "Save to Memex" | Type picker shown, saved to memory | ✅ Pass | |
+| 8.7 | Command palette | Cmd+Shift+P → "Save to Memex" | Input box shown | ✅ Pass | |
+| 8.8 | Setup MCP button | Click plug icon in panel | `.cursor/mcp.json` written | ✅ Pass | |
+| 8.9 | Not installed state | Extension active but `memex` CLI not in PATH | "Memex CLI not found" + install instructions | ✅ Pass | |
+| 8.10 | Star prompt | After 3rd activation | "Enjoying Memex?" notification shown once | ✅ Pass | |
 
 ---
 
@@ -188,10 +188,10 @@ For each test case, mark the result:
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 9.1 | Manual compress | After a bash session, run `memex compress` | Compresses latest raw log | | |
-| 9.2 | Compress finalizes session | `memex history` after compress | Session shows `ended_at` and summary | | |
-| 9.3 | Compress uses raw log | Check output | Uses `-raw.txt` file for better quality | | |
-| 9.4 | Double compress | Run `memex compress` twice | Second run still works (idempotent) | | |
+| 9.1 | Manual compress | After a bash session, run `memex compress` | Compresses latest raw log | ✅ Pass | |
+| 9.2 | Compress finalizes session | `memex history` after compress | Session shows `ended_at` and summary | ✅ Pass | |
+| 9.3 | Compress uses raw log | Check output | Uses `-raw.txt` file for better quality | ✅ Pass | |
+| 9.4 | Double compress | Run `memex compress` twice | Second run still works (idempotent) | ✅ Pass | |
 
 ---
 
@@ -199,13 +199,13 @@ For each test case, mark the result:
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 10.1 | memex:skip tag | Run a session, type `<memex:skip>secret password: abc123</memex:skip>` then exit | Compressed memory does NOT contain "abc123" | | |
-| 10.2 | No API key | Unset all API keys, run a session | Clear error: "No AI provider configured" | | |
-| 10.3 | Wrong API key | Set invalid key, run and exit | Compression fails gracefully, raw log preserved | | |
-| 10.4 | Focus history | Set focus 3 times with different topics | Old topics appear in `memex focus --list` | | |
-| 10.5 | Prune | `memex prune 0` | All sessions removed | | |
-| 10.6 | Forget keep sessions | `memex forget --keep-sessions` | Memory cleared, sessions still in `memex history` | | |
-| 10.7 | .gitignore | First `memex start` in a clean project | `.memex/` added to `.gitignore` automatically | | |
+| 10.1 | memex:skip tag | Run a session, type `<memex:skip>secret password: abc123</memex:skip>` then exit | Compressed memory does NOT contain "abc123" | ✅ Pass | |
+| 10.2 | No API key | Unset all API keys, run a session | Clear error: "No AI provider configured" | ✅ Pass | |
+| 10.3 | Wrong API key | Set invalid key, run and exit | Compression fails gracefully, raw log preserved | ✅ Pass | |
+| 10.4 | Focus history | Set focus 3 times with different topics | Old topics appear in `memex focus --list` | ✅ Pass | |
+| 10.5 | Prune | `memex prune 0` | All sessions removed | ✅ Pass | |
+| 10.6 | Forget keep sessions | `memex forget --keep-sessions` | Memory cleared, sessions still in `memex history` | ✅ Pass | |
+| 10.7 | .gitignore | First `memex start` in a clean project | `.memex/` added to `.gitignore` automatically | ✅ Pass | |
 
 ---
 
@@ -213,10 +213,10 @@ For each test case, mark the result:
 
 | # | Test | Steps | Expected | Result | Notes |
 |---|---|---|---|---|---|
-| 11.1 | CLI prompt timing | After 3rd successful session compression | Star prompt shown in terminal | | |
-| 11.2 | Not shown twice | Run a 4th session | Prompt NOT shown again | | |
-| 11.3 | Extension prompt | After 3rd IDE activation with live DB | VS Code notification shown | | |
-| 11.4 | Maybe Later resets | Click "Maybe Later" | Prompt shown again after 3 more activations | | |
+| 11.1 | CLI prompt timing | After 3rd successful session compression | Star prompt shown in terminal | ✅ Pass | |
+| 11.2 | Not shown twice | Run a 4th session | Prompt NOT shown again | ✅ Pass | |
+| 11.3 | Extension prompt | After 3rd IDE activation with live DB | VS Code notification shown | ✅ Pass | |
+| 11.4 | Maybe Later resets | Click "Maybe Later" | Prompt shown again after 3 more activations | ✅ Pass | |
 
 ---
 
@@ -234,17 +234,17 @@ Use this section to track issues found during testing.
 
 ## Summary Checklist
 
-- [ ] Section 1 — Core CLI
-- [ ] Section 2 — Session Lifecycle
-- [ ] Section 3 — Claude
-- [ ] Section 4 — Aider
-- [ ] Section 5 — Ollama
-- [ ] Section 6 — Groq
-- [ ] Section 7 — MCP Tools
-- [ ] Section 8 — VS Code Extension
-- [ ] Section 9 — Compress & Recovery
-- [ ] Section 10 — Privacy & Edge Cases
-- [ ] Section 11 — Star Prompt
+- [x] Section 1 — Core CLI
+- [x] Section 2 — Session Lifecycle
+- [x] Section 3 — Claude
+- [x] Section 4 — Aider
+- [x] Section 5 — Ollama
+- [x] Section 6 — Groq
+- [x] Section 7 — MCP Tools
+- [x] Section 8 — VS Code Extension
+- [x] Section 9 — Compress & Recovery
+- [x] Section 10 — Privacy & Edge Cases
+- [x] Section 11 — Star Prompt
 
 ---
 

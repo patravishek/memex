@@ -1,11 +1,13 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import { execFile } from "child_process";
 import { MemoryPanel } from "./MemoryPanel";
 import { setupMcpConfigs, notifyMcpSetup } from "./mcpSetup";
 import { saveObservationCommand } from "./commands";
 
 let memoryPanel: MemoryPanel | undefined;
+let snapshotTimer: ReturnType<typeof setInterval> | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   const workspaceRoot = getWorkspaceRoot();
@@ -26,7 +28,12 @@ export function activate(context: vscode.ExtensionContext): void {
           "Memex: No memory found for this project. Run `memex start` in your terminal first."
         );
       }),
-      vscode.commands.registerCommand("memex.refresh", () => {})
+      vscode.commands.registerCommand("memex.refresh", () => {}),
+      vscode.commands.registerCommand("memex.snapshot", () => {
+        vscode.window.showWarningMessage(
+          "Memex: No memory found for this project. Run `memex start` in your terminal first."
+        );
+      })
     );
     return;
   }
@@ -58,27 +65,39 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("memex.refresh", () => {
       memoryPanel?.refresh();
+    }),
+
+    vscode.commands.registerCommand("memex.snapshot", () => {
+      runSnapshot(workspaceRoot);
     })
   );
 
   // Auto-setup MCP configs on activation (silent — no notification unless files changed)
   const written = setupMcpConfigs(workspaceRoot);
   if (written.length > 0) {
-    // New files written — notify the user
     notifyMcpSetup(written).catch(() => {});
   }
 
   // After the 3rd time the extension activates with a live DB, ask for a review.
-  // Uses globalState so it only shows once per machine, never again after dismissed.
   maybeShowFeedbackPrompt(context);
 
+  // Auto-snapshot: fire `memex snapshot` every N minutes while VS Code is open
+  startSnapshotTimer(workspaceRoot);
+
+  // Re-read snapshot interval when settings change
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("memex.snapshotIntervalMinutes")) {
+        startSnapshotTimer(workspaceRoot);
+      }
+    })
+  );
+
   // Watch for .memex/memex.db creation if it doesn't exist yet
-  // (covers the case where user runs `memex start` after opening VS Code)
   const watcher = vscode.workspace.createFileSystemWatcher(
     new vscode.RelativePattern(workspaceRoot, ".memex/memex.db")
   );
   watcher.onDidCreate(() => {
-    // Reload the window to re-activate with full functionality
     vscode.window
       .showInformationMessage(
         "Memex memory detected! Reload window to activate the Memex panel.",
@@ -95,6 +114,48 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
   memoryPanel?.dispose();
+  if (snapshotTimer) {
+    clearInterval(snapshotTimer);
+    snapshotTimer = undefined;
+  }
+}
+
+// ─── Auto-snapshot timer ──────────────────────────────────────────────────────
+
+function startSnapshotTimer(workspaceRoot: string): void {
+  if (snapshotTimer) {
+    clearInterval(snapshotTimer);
+    snapshotTimer = undefined;
+  }
+
+  const intervalMins = vscode.workspace
+    .getConfiguration("memex")
+    .get<number>("snapshotIntervalMinutes", 10);
+
+  if (!intervalMins || intervalMins <= 0) return;
+
+  const intervalMs = intervalMins * 60 * 1000;
+  snapshotTimer = setInterval(() => {
+    runSnapshot(workspaceRoot);
+  }, intervalMs);
+}
+
+/**
+ * Call `memex snapshot --project <root>` silently.
+ * Only has an effect if there is an active session in progress.
+ * Refreshes the memory panel when done.
+ */
+function runSnapshot(workspaceRoot: string): void {
+  execFile(
+    "memex",
+    ["snapshot", "--project", workspaceRoot],
+    { timeout: 60000, cwd: workspaceRoot },
+    (err) => {
+      if (!err) {
+        memoryPanel?.refresh();
+      }
+    }
+  );
 }
 
 /**

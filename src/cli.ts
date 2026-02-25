@@ -6,7 +6,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { SessionLogger, ConversationTurn } from "./core/session-logger.js";
 import { wrapProcess } from "./core/pty-wrapper.js";
-import { compressSession, buildResumePrompt, buildMcpHint, writeResumeFile } from "./memory/compressor.js";
+import { compressSession, compressSnapshot, buildResumePrompt, buildMcpHint, writeResumeFile } from "./memory/compressor.js";
 import { ContextOptions } from "./memory/context-builder.js";
 import { startMcpServer } from "./mcp/server.js";
 import { writeMcpJson, removeMcpJson, writeGlobalMcpJson } from "./mcp/config.js";
@@ -29,10 +29,13 @@ import {
   getSession,
   searchSessions,
   pruneOldSessions,
+  saveObservation,
+  ObservationType,
   SessionRow,
 } from "./storage/queries.js";
+import { fireWebhook, buildWebhookPayload, getWebhookUrl } from "./core/webhook.js";
 
-const MEMEX_VERSION = "0.4.6";
+const MEMEX_VERSION = "0.6.0";
 
 // ─── ASCII logo ───────────────────────────────────────────────────────────────
 
@@ -124,6 +127,11 @@ program
   .argument("[command]", "Agent command to run", "claude")
   .option("-p, --project <path>", "Project directory", process.cwd())
   .option("--args <args>", "Extra args to pass to the agent command", "")
+  .option(
+    "--snapshot-interval <minutes>",
+    "Auto-snapshot memory every N minutes mid-session (0 to disable, default: 10)",
+    "10"
+  )
   .action(async (command: string, options) => {
     const projectPath = path.resolve(options.project);
     const memexDir = getMemexDir(projectPath);
@@ -137,6 +145,11 @@ program
     console.log(chalk.bold("  session started"));
     console.log(chalk.dim(`  Project: ${projectPath}`));
     console.log(chalk.dim(`  Agent:   ${command}\n`));
+
+    const snapshotMins = parseInt(options.snapshotInterval, 10);
+    if (!isNaN(snapshotMins) && snapshotMins > 0) {
+      console.log(chalk.dim(`  Auto-snapshot: every ${snapshotMins} min\n`));
+    }
 
     if (memoryExists(projectPath)) {
       const memory = loadMemory(projectPath)!;
@@ -158,12 +171,24 @@ program
     const logger = new SessionLogger(memexDir);
     const args = options.args ? options.args.split(" ").filter(Boolean) : [];
 
+    const snapshotIntervalMs =
+      !isNaN(snapshotMins) && snapshotMins > 0 ? snapshotMins * 60 * 1000 : undefined;
+
     try {
       const result = await wrapProcess(logger, {
         command,
         args,
         cwd: projectPath,
+        snapshotIntervalMs,
+        onSessionStart: (rawLogPath, logPath) => {
+          writeActiveSession(projectPath, { sessionId, rawLogPath, logPath });
+        },
+        onSnapshot: async (rawLogPath) => {
+          await runSnapshotCompression(rawLogPath, projectPath);
+        },
       });
+
+      clearActiveSession(projectPath);
 
       // Write a pending marker before async compression — removed on success
       writePendingCompression(projectPath, {
@@ -182,6 +207,7 @@ program
     } catch (err) {
       const errMsg = (err as Error).message;
       const transcript = logger.getTranscript();
+      clearActiveSession(projectPath);
       if (transcript && logger.getEntryCount() > 3) {
         await runCompression(
           transcript,
@@ -221,6 +247,11 @@ program
   .option(
     "--focus <topic>",
     'Surface memory relevant to a specific topic first, e.g. --focus "auth bug"'
+  )
+  .option(
+    "--snapshot-interval <minutes>",
+    "Auto-snapshot memory every N minutes mid-session (0 to disable, default: 10)",
+    "10"
   )
   .action(async (command: string, options) => {
     const projectPath = path.resolve(options.project);
@@ -360,6 +391,13 @@ program
     const logger = new SessionLogger(memexDir);
     const args = options.args ? options.args.split(" ").filter(Boolean) : [];
 
+    const snapshotMins = parseInt(options.snapshotInterval ?? "10", 10);
+    if (!isNaN(snapshotMins) && snapshotMins > 0) {
+      console.log(chalk.dim(`  Auto-snapshot: every ${snapshotMins} min\n`));
+    }
+    const snapshotIntervalMs =
+      !isNaN(snapshotMins) && snapshotMins > 0 ? snapshotMins * 60 * 1000 : undefined;
+
     try {
       const result = await wrapProcess(logger, {
         command,
@@ -369,7 +407,16 @@ program
           ? `Please read the file ${resumeFilePath} to restore context from our previous sessions, then ask how to continue.`
           : undefined,
         injectDelayMs: 3000,
+        snapshotIntervalMs,
+        onSessionStart: (rawLogPath, logPath) => {
+          writeActiveSession(projectPath, { sessionId, rawLogPath, logPath });
+        },
+        onSnapshot: async (rawLogPath) => {
+          await runSnapshotCompression(rawLogPath, projectPath);
+        },
       });
+
+      clearActiveSession(projectPath);
 
       // Write a pending marker before async compression — removed on success
       writePendingCompression(projectPath, {
@@ -387,6 +434,7 @@ program
       );
     } catch (err) {
       const transcript = logger.getTranscript();
+      clearActiveSession(projectPath);
       if (transcript && logger.getEntryCount() > 3) {
         await runCompression(
           transcript,
@@ -397,6 +445,7 @@ program
         );
       }
     } finally {
+      clearActiveSession(projectPath);
       // Restore CLAUDE.md and clean up temp files
       if (injectedViaClaudeMd) {
         if (originalClaudeMd === null) {
@@ -770,6 +819,210 @@ program
     );
   });
 
+// ─── memex snapshot ───────────────────────────────────────────────────────────
+program
+  .command("snapshot")
+  .description("Manually snapshot memory mid-session (safe to call any time)")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .action(async (options) => {
+    const projectPath = path.resolve(options.project);
+    const memexDir = getMemexDir(projectPath);
+
+    const active = readActiveSession(projectPath);
+    if (!active) {
+      console.log(chalk.dim("\n  No active session — nothing to snapshot.\n"));
+      return;
+    }
+
+    if (!fs.existsSync(active.rawLogPath)) {
+      console.log(chalk.yellow("\n  Active session log not found — may have already ended.\n"));
+      return;
+    }
+
+    await runSnapshotCompression(active.rawLogPath, projectPath);
+  });
+
+// ─── memex observe ────────────────────────────────────────────────────────────
+program
+  .command("observe")
+  .description("Save an observation to project memory immediately (no compression needed)")
+  .argument("<type>", "Type: task | decision | gotcha | note")
+  .argument("<content>", "The observation to save")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .action((type: string, content: string, options) => {
+    const validTypes: ObservationType[] = ["task", "decision", "gotcha", "note"];
+    if (!validTypes.includes(type as ObservationType)) {
+      console.error(chalk.red(`\n  Invalid type "${type}". Use: task | decision | gotcha | note\n`));
+      process.exit(1);
+    }
+
+    const projectPath = path.resolve(options.project);
+    const memexDir = getMemexDir(projectPath);
+
+    if (!memoryExists(projectPath)) {
+      console.log(chalk.yellow("\n  No memory found. Run `memex start` first.\n"));
+      return;
+    }
+
+    const db = getDb(memexDir);
+    const active = readActiveSession(projectPath);
+    const id = saveObservation(
+      db,
+      projectPath,
+      type as ObservationType,
+      content.trim(),
+      active?.sessionId,
+      "user"
+    );
+
+    console.log(chalk.green(`\n  Saved ${type} #${id}: "${content.slice(0, 80)}${content.length > 80 ? "…" : ""}"\n`));
+  });
+
+// ─── memex hook:pre ───────────────────────────────────────────────────────────
+program
+  .command("hook:pre")
+  .description("Pre-session hook: outputs project context (use as Claude Code SessionStart hook)")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .option("--json", "Output context as JSON", false)
+  .action((options) => {
+    const projectPath = path.resolve(options.project);
+    const memory = loadMemory(projectPath);
+
+    if (!memory) {
+      if (options.json) {
+        process.stdout.write(JSON.stringify({ error: "No memory found" }) + "\n");
+      }
+      process.exit(0);
+    }
+
+    if (options.json) {
+      process.stdout.write(JSON.stringify(memory, null, 2) + "\n");
+    } else {
+      const { buildMcpHint } = require("./memory/compressor.js") as typeof import("./memory/compressor.js");
+      const hint = buildMcpHint(memory, { focus: memory.currentFocus });
+      process.stdout.write(hint + "\n");
+    }
+    process.exit(0);
+  });
+
+// ─── memex hook:post ──────────────────────────────────────────────────────────
+program
+  .command("hook:post")
+  .description("Post-session hook: triggers compression (use as Claude Code Stop hook)")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .action(async (options) => {
+    const projectPath = path.resolve(options.project);
+    const memexDir = getMemexDir(projectPath);
+
+    // Claude Code passes event JSON on stdin — read it but don't require it
+    let _hookEvent: Record<string, unknown> = {};
+    try {
+      if (!process.stdin.isTTY) {
+        const chunks: Buffer[] = [];
+        for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+        const raw = Buffer.concat(chunks).toString("utf-8").trim();
+        if (raw) _hookEvent = JSON.parse(raw) as Record<string, unknown>;
+      }
+    } catch { /* ignore */ }
+
+    // Check for pending compression first (abrupt session end)
+    const pendingPath = pendingCompressionPath(projectPath);
+    if (fs.existsSync(pendingPath)) {
+      await checkAndRunPendingCompression(projectPath);
+      process.exit(0);
+    }
+
+    // Try to compress the active session's raw log
+    const active = readActiveSession(projectPath);
+    if (active && fs.existsSync(active.rawLogPath)) {
+      const transcript = parseRawLog(active.rawLogPath);
+      if (transcript && transcript.trim().length >= 50) {
+        const spinner = ora("  Compressing session (hook:post)...").start();
+        try {
+          const updated = await compressSession(transcript, projectPath, active.logPath);
+          if (active.sessionId !== undefined) {
+            const db = getDb(memexDir);
+            const sessionSummary = updated.recentSessions.at(-1)?.summary ?? "";
+            finalizeSession(db, active.sessionId, sessionSummary, active.logPath, []);
+          }
+          clearActiveSession(projectPath);
+          spinner.succeed(chalk.green("  Memory updated (hook:post)") + chalk.dim(` — focus: ${updated.currentFocus || "not set"}`));
+        } catch (err) {
+          spinner.fail(chalk.red("  hook:post compression failed"));
+          console.error(chalk.dim(`  ${(err as Error).message}`));
+        }
+      } else {
+        clearActiveSession(projectPath);
+      }
+      process.exit(0);
+    }
+
+    // No active session — fall back to compressing latest raw log
+    const sessionsDir = path.join(memexDir, "sessions");
+    if (!fs.existsSync(sessionsDir)) { process.exit(0); }
+
+    const rawFiles = fs.readdirSync(sessionsDir).filter((f) => f.endsWith("-raw.txt")).sort();
+    if (rawFiles.length === 0) { process.exit(0); }
+
+    const rawLogPath = path.join(sessionsDir, rawFiles[rawFiles.length - 1]);
+    const transcript = parseRawLog(rawLogPath);
+    if (transcript && transcript.trim().length >= 50) {
+      const logPath = rawLogPath.replace("-raw.txt", ".jsonl");
+      await runCompression(transcript, projectPath, logPath, []);
+    }
+
+    process.exit(0);
+  });
+
+// ─── memex setup-hooks ────────────────────────────────────────────────────────
+program
+  .command("setup-hooks")
+  .description("Generate agent hook configs so agents auto-compress on session end")
+  .option("-p, --project <path>", "Project directory", process.cwd())
+  .option("--claude", "Generate .claude/settings.json Stop hook for Claude Code", false)
+  .option("--all", "Generate hooks for all supported agents", false)
+  .action((options) => {
+    const projectPath = path.resolve(options.project);
+    const doAll = options.all || (!options.claude);
+
+    if (options.claude || doAll) {
+      const claudeDir = path.join(projectPath, ".claude");
+      const settingsPath = path.join(claudeDir, "settings.json");
+
+      fs.mkdirSync(claudeDir, { recursive: true });
+
+      let existing: Record<string, unknown> = {};
+      if (fs.existsSync(settingsPath)) {
+        try {
+          existing = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
+        } catch { /* use empty */ }
+      }
+
+      const hookCommand = `memex hook:post --project ${projectPath}`;
+      const stopHooks = { hooks: [{ type: "command", command: hookCommand }] };
+
+      const hooks = (existing.hooks as Record<string, unknown>) ?? {};
+      hooks.Stop = [stopHooks];
+      existing.hooks = hooks;
+
+      fs.writeFileSync(settingsPath, JSON.stringify(existing, null, 2) + "\n", "utf-8");
+      console.log(chalk.green(`\n  Claude Code hook written → ${settingsPath}`));
+      console.log(chalk.dim("  Claude will call `memex hook:post` on every session end."));
+    }
+
+    console.log(chalk.bold("\n  Supported hook systems:"));
+    console.log(chalk.dim("    --claude   .claude/settings.json  (Stop hook for Claude Code)"));
+    console.log();
+    console.log(chalk.bold("  Generic hook interface:"));
+    console.log(chalk.dim("    memex hook:pre  --project <path>   (call before agent starts — outputs context)"));
+    console.log(chalk.dim("    memex hook:post --project <path>   (call after agent exits — compresses session)"));
+    console.log();
+    console.log(chalk.bold("  Example for Aider (.aider.conf.yml):"));
+    console.log(chalk.dim("    # Not yet supported via Aider config — call manually or via shell alias:"));
+    console.log(chalk.dim(`    alias aider='memex hook:pre --project ${projectPath} && aider && memex hook:post --project ${projectPath}'`));
+    console.log();
+  });
+
 // ─── memex compress ───────────────────────────────────────────────────────────
 program
   .command("compress")
@@ -864,6 +1117,74 @@ program
   });
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// ─── Active session tracking ─────────────────────────────────────────────────
+
+interface ActiveSession {
+  sessionId: number;
+  rawLogPath: string;
+  logPath: string;
+}
+
+function activeSessionPath(projectPath: string): string {
+  return path.join(getMemexDir(projectPath), "active-session.json");
+}
+
+function writeActiveSession(projectPath: string, data: ActiveSession): void {
+  try {
+    fs.writeFileSync(activeSessionPath(projectPath), JSON.stringify(data), "utf-8");
+  } catch { /* ignore */ }
+}
+
+function readActiveSession(projectPath: string): ActiveSession | null {
+  const p = activeSessionPath(projectPath);
+  if (!fs.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf-8")) as ActiveSession;
+  } catch {
+    return null;
+  }
+}
+
+function clearActiveSession(projectPath: string): void {
+  try {
+    fs.rmSync(activeSessionPath(projectPath), { force: true });
+  } catch { /* ignore */ }
+}
+
+// ─── Snapshot compression ────────────────────────────────────────────────────
+
+/**
+ * Run a partial (mid-session) compression from a raw log path.
+ * Updates memory without finalizing the session or adding to recentSessions.
+ */
+async function runSnapshotCompression(rawLogPath: string, projectPath: string): Promise<void> {
+  const transcript = parseRawLog(rawLogPath);
+  if (!transcript || transcript.trim().length < 50) return;
+
+  const memexDir = getMemexDir(projectPath);
+  const logPath = rawLogPath.replace("-raw.txt", ".jsonl");
+
+  try {
+    const updated = await compressSnapshot(transcript, projectPath, logPath);
+    saveMemory(projectPath, updated);
+
+    const webhookUrl = getWebhookUrl(memexDir);
+    if (webhookUrl) {
+      await fireWebhook(webhookUrl, buildWebhookPayload(updated, "snapshot"));
+    }
+
+    const lastSession = updated.recentSessions.at(-1);
+    process.stdout.write(
+      chalk.dim(`\n  ✦ Snapshot saved — focus: ${updated.currentFocus || "not set"}\n`)
+    );
+    if (lastSession) {
+      process.stdout.write(chalk.dim(`    Tasks: ${updated.pendingTasks.length} · Gotchas: ${updated.gotchas.length}\n\n`));
+    }
+  } catch {
+    // Silently swallow snapshot errors — never interrupt the session
+  }
+}
 
 // ─── Star prompt ─────────────────────────────────────────────────────────────
 
@@ -1056,6 +1377,13 @@ async function runCompression(
         chalk.dim(`, gotchas: ${updated.gotchas.length}`) +
         chalk.dim(`, conversation turns saved: ${turns.length}\n`)
     );
+
+    // Fire webhook if configured
+    const webhookUrl = getWebhookUrl(getMemexDir(projectPath));
+    if (webhookUrl) {
+      const sessionSummary = updated.recentSessions.at(-1)?.summary;
+      await fireWebhook(webhookUrl, buildWebhookPayload(updated, "session_end", sessionSummary));
+    }
 
     maybeShowStarPrompt(projectPath);
   } catch (err) {

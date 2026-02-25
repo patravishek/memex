@@ -2,7 +2,7 @@
   "name": "memex-vscode",
   "displayName": "Memex",
   "description": "Persistent project memory for AI coding agents. Works with Cursor, Copilot, Claude, Ollama, and any MCP-compatible tool — paid or free.",
-  "version": "0.5.7",
+  "version": "0.6.0",
   "publisher": "patravishek",
   "icon": "images/icon.png",
   "repository": {
@@ -86,6 +86,11 @@
           "group": "navigation"
         },
         {
+          "command": "memex.snapshot",
+          "when": "view == memex.memoryPanel",
+          "group": "navigation"
+        },
+        {
           "command": "memex.setupMcp",
           "when": "view == memex.memoryPanel",
           "group": "navigation"
@@ -106,8 +111,24 @@
         "command": "memex.refresh",
         "title": "Memex: Refresh Panel",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "memex.snapshot",
+        "title": "Memex: Snapshot Memory Now",
+        "icon": "$(save)"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Memex",
+      "properties": {
+        "memex.snapshotIntervalMinutes": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "description": "How often (in minutes) to auto-snapshot project memory mid-session. Set to 0 to disable. Requires an active `memex start` or `memex resume` session."
+        }
+      }
+    }
   },
   "scripts": {
     "build": "node esbuild.mjs",

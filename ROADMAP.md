@@ -2,7 +2,7 @@
 
 This document outlines the planned evolution of Memex. Features are grouped by milestone. Priorities may shift based on community feedback.
 
-> **Current version:** v0.4.6  
+> **Current version:** v0.6.0 (CLI) · v0.6.0 (Extension)  
 > **Core value prop:** Agent-agnostic persistent memory — works with Claude, Cursor, Copilot, Aider, Ollama, or any CLI/IDE agent. Simple install, no heavy dependencies, MIT licensed, enterprise-ready via LiteLLM.
 
 Contributions welcome. If a feature matters to you, open an issue or a PR.
@@ -70,22 +70,23 @@ Contributions welcome. If a feature matters to you, open an issue or a PR.
 
 ---
 
-## v0.6 — Mid-Session Capture & Lifecycle Hooks ⬅ next
+## ✅ v0.6 — Mid-Session Capture & Lifecycle Hooks
 
 > Stop waiting until exit. Save memory as you work.
 
-**Why:** The biggest gap vs. tools like [claude-mem](https://github.com/thedotmack/claude-mem) is real-time capture. Currently Memex only compresses at session end — if a session is 3 hours long, everything is at risk until exit. Lifecycle hooks and periodic snapshots fix this.
+**Why:** The biggest gap vs. tools like [claude-mem](https://github.com/thedotmack/claude-mem) is real-time capture. Previously Memex only compressed at session end — if a session was 3 hours long, everything was at risk until exit. Lifecycle hooks and periodic snapshots fix this.
 
-- [ ] **Auto-snapshot every 30 min** — compress and save memory mid-session without interrupting the agent; configurable interval
-- [ ] **Claude Code hooks** — integrate with Claude Code's native hook system (`SessionStart`, `SessionEnd`, `PostToolUse`) for zero-overhead capture instead of PTY wrapping
-- [ ] **Generic hook interface** — `memex hook:pre` and `memex hook:post` for use in any agent's config file
-- [ ] **Observation streaming** — `save_observation` calls from inside a session are saved immediately to SQLite, not buffered until compression
-- [ ] **Git-aware compression** — diff the git state before/after a session; include changed files and commit messages in memory automatically
-- [ ] **Webhook support** — fire an HTTP webhook on session end (useful for Slack notifications, CI triggers)
+- [x] **Auto-snapshot every N min (configurable), both for CLI and Extension** — `--snapshot-interval <minutes>` on `start`/`resume`; VS Code setting `memex.snapshotIntervalMinutes` (default: 10); manual trigger via `memex snapshot` or the panel button
+- [x] **Claude Code hooks** — `memex setup-hooks --claude` writes `.claude/settings.json` Stop hook; `memex hook:post` triggered automatically on every Claude session end
+- [x] **Generic hook interface** — `memex hook:pre` (outputs context) and `memex hook:post` (compresses session) for use in any agent's config file or shell alias
+- [x] **Observation streaming** — `save_observation` via MCP writes immediately to SQLite; new `memex observe <type> <content>` CLI command for terminal-side streaming
+- [x] **Git-aware compression** — git branch, recent commits, and changed files automatically included in every AI compression prompt; changed files suggested for `importantFiles`
+- [x] **Webhook support** — set `MEMEX_WEBHOOK_URL` env var or `webhookUrl` in `.memex/config.json` to receive a POST on session end and each snapshot
+- [x] **Cursor / Copilot / Codex hooks** — these agents use MCP natively (already covered by v0.5); `memex setup-hooks` generates generic shell alias guidance for non-MCP workflows
 
 ---
 
-## v0.7 — Semantic Vector Search (Pure JS, No Python)
+## v0.7 — Semantic Vector Search (Pure JS, No Python) ⬅ next
 
 > Find memory by meaning, not just keywords.
 
