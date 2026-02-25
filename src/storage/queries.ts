@@ -363,6 +363,18 @@ export function saveObservation(
   sessionId?: number,
   source: "agent" | "user" = "agent"
 ): number {
+  // Ensure a project row exists — the FK constraint requires it.
+  // Mirrors the same guard in createSession so save_observation is always safe
+  // to call even on a project that has never had a full memex start/resume.
+  if (!projectExists(db, projectPath)) {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT OR IGNORE INTO project
+        (path, name, created_at, updated_at)
+      VALUES (?, ?, ?, ?)
+    `).run(projectPath, path.basename(projectPath), now, now);
+  }
+
   const result = db.prepare(`
     INSERT INTO observations (project_path, session_id, type, content, source, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
